@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yaml
 name: Deploy Apigee Proxy from YAML
 
 on:
@@ -19,8 +20,8 @@ jobs:
 
       - name: Install Apigee CLI
         run: |
-          curl -sLO https://github.com/apigee/apigeecli/releases/latest/download/apigeecli_Linux_x86_64.tar.gz
-          tar -xzf apigeecli_Linux_x86_64.tar.gz
+          curl -sLO https://github.com/apigee/apigeecli/releases/latest/download/apigeecli_Linux_x86_64.zip
+          unzip -o apigeecli_Linux_x86_64.zip
           chmod +x apigeecli
           sudo mv apigeecli /usr/local/bin/
 
