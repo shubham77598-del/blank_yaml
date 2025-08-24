@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yaml
 name: Deploy Apigee Proxy from YAML
 
 on:
@@ -17,23 +18,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Step 1: Define & pin your desired CLI version
+      - name: Set Apigee CLI version
+        id: pin
+        run: |
+          # Change this to the version you trust
+          echo "apigeecli_version=v2.14.0" >> $GITHUB_OUTPUT
+
+      # Step 2: Cache the CLI zip & extracted directory
+      - name: Cache Apigee CLI
+        uses: actions/cache@v3
+        with:
+          # We cache the entire versioned folder under ~/.cache/apigeecli
+          path: ~/.cache/apigeecli
+          key: apigeecli-${{ runner.os }}-${{ steps.pin.outputs.apigeecli_version }}
+
+      # Step 3: Install or restore from cache
       - name: Install Apigee CLI
         run: |
-          # 1. Get the download URL for the latest Linux 64-bit ZIP
-          DOWNLOAD_URL=$(
-            curl -s https://api.github.com/repos/apigee/apigeecli/releases/latest \
-            | grep browser_download_url \
-            | grep Linux_x86_64.zip \
-            | head -n1 \
-            | cut -d '"' -f4
-          )
-          echo "Downloading Apigee CLI from $DOWNLOAD_URL"
-          # 2. Download, unzip, make executable, and move to PATH
-          curl -sL -o apigeecli.zip "$DOWNLOAD_URL"
-          unzip -o apigeecli.zip
-          chmod +x apigeecli
-          sudo mv apigeecli /usr/local/bin/
-          # 3. Confirm it works
+          VERSION=${{ steps.pin.outputs.apigeecli_version }}
+          CACHE_DIR="$HOME/.cache/apigeecli/$VERSION"
+
+          if [ -f "$CACHE_DIR/apigeecli" ]; then
+            echo "🗄️  Restoring cached Apigee CLI $VERSION"
+          else
+            echo "⬇️  Downloading Apigee CLI $VERSION"
+            ZIP_NAME="apigeecli_${VERSION}_Linux_x86_64.zip"
+            URL="https://github.com/apigee/apigeecli/releases/download/${VERSION}/${ZIP_NAME}"
+            mkdir -p "$CACHE_DIR"
+            curl -sL -o "$ZIP_NAME" "$URL"
+            unzip -q -d "$CACHE_DIR" "$ZIP_NAME"
+            rm "$ZIP_NAME"
+            chmod +x "$CACHE_DIR/apigeecli"
+          fi
+
+          echo "📦 Installing into /usr/local/bin"
+          sudo cp "$CACHE_DIR/apigeecli" /usr/local/bin/apigeecli
+
+          echo "🔍 Verifying installation"
           apigeecli version
 
       - name: Validate Secrets
@@ -43,7 +65,7 @@ jobs:
           APIGEE_TOKEN: ${{ secrets.APIGEE_TOKEN }}
         run: |
           for var in APIGEE_ORG APIGEE_ENV APIGEE_TOKEN; do
-            if [[ -z "${!var}" ]]; then
+            if [ -z "${!var}" ]; then
               echo "::error::Missing $var"
               exit 1
             fi
@@ -55,7 +77,8 @@ jobs:
           APIGEE_ENV:   ${{ secrets.APIGEE_ENV }}
           APIGEE_TOKEN: ${{ secrets.APIGEE_TOKEN }}
         run: |
-          apigeecli apply -f "${{ github.event.inputs.config_file }}" \
+          apigeecli apply \
+            -f "${{ github.event.inputs.config_file }}" \
             --org "$APIGEE_ORG" \
             --env "$APIGEE_ENV" \
             --token "$APIGEE_TOKEN"
