@@ -1,0 +1,49 @@
+name: Deploy Apigee Proxy from YAML
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Path to proxy YAML config'
+        required: true
+        default: 'proxy-config.yaml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: apigee
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Apigee CLI
+        run: |
+          curl -sLO https://github.com/apigee/apigeecli/releases/latest/download/apigeecli_Linux_x86_64.tar.gz
+          tar -xzf apigeecli_Linux_x86_64.tar.gz
+          chmod +x apigeecli
+          sudo mv apigeecli /usr/local/bin/
+
+      - name: Validate Secrets
+        env:
+          APIGEE_ORG:   ${{ secrets.APIGEE_ORG }}
+          APIGEE_ENV:   ${{ secrets.APIGEE_ENV }}
+          APIGEE_TOKEN: ${{ secrets.APIGEE_TOKEN }}
+        run: |
+          for v in APIGEE_ORG APIGEE_ENV APIGEE_TOKEN; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing $v"
+              exit 1
+            fi
+          done
+
+      - name: Deploy Proxy from YAML
+        env:
+          APIGEE_ORG:   ${{ secrets.APIGEE_ORG }}
+          APIGEE_ENV:   ${{ secrets.APIGEE_ENV }}
+          APIGEE_TOKEN: ${{ secrets.APIGEE_TOKEN }}
+        run: |
+          apigeecli apply -f ${{ github.event.inputs.config_file }} \
+            --org $APIGEE_ORG \
+            --env $APIGEE_ENV \
+            --token $APIGEE_TOKEN
