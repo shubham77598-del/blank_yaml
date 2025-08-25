@@ -18,22 +18,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 1: Define & pin your desired CLI version
-      - name: Set Apigee CLI version
+      - name: Pin Apigee CLI version
         id: pin
         run: |
-          # Change this to the version you trust
+          # Change this to the exact tag you want
           echo "apigeecli_version=v2.14.0" >> $GITHUB_OUTPUT
 
-      # Step 2: Cache the CLI zip & extracted directory
       - name: Cache Apigee CLI
         uses: actions/cache@v3
         with:
-          # We cache the entire versioned folder under ~/.cache/apigeecli
           path: ~/.cache/apigeecli
           key: apigeecli-${{ runner.os }}-${{ steps.pin.outputs.apigeecli_version }}
 
-      # Step 3: Install or restore from cache
       - name: Install Apigee CLI
         run: |
           VERSION=${{ steps.pin.outputs.apigeecli_version }}
@@ -46,8 +42,10 @@ jobs:
             ZIP_NAME="apigeecli_${VERSION}_Linux_x86_64.zip"
             URL="https://github.com/apigee/apigeecli/releases/download/${VERSION}/${ZIP_NAME}"
             mkdir -p "$CACHE_DIR"
+
             curl -sL -o "$ZIP_NAME" "$URL"
-            unzip -q -d "$CACHE_DIR" "$ZIP_NAME"
+            # -j junk paths so the binary lands at $CACHE_DIR/apigeecli
+            unzip -q -j "$ZIP_NAME" -d "$CACHE_DIR"
             rm "$ZIP_NAME"
             chmod +x "$CACHE_DIR/apigeecli"
           fi
