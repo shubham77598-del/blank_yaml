@@ -1,209 +1,215 @@
 package com.example;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
+/**
+ * Generator class for Apigee shared flows.
+ * Creates the bundle structure and related files based on the design YAML.
+ */
 public class SharedFlowGenerator {
-    public static void generate(List<Map<String, Object>> sharedFlows) throws Exception {
-        if (sharedFlows == null) return;
-        
-        for (Map<String, Object> sf : sharedFlows) {
-            String name = (String) sf.get("name");
-            String description = sf.containsKey("description") ? 
-                (String) sf.get("description") : "Generated Shared Flow";
-            
-            System.out.println("Generating shared flow bundle for: " + name);
-            
-            // Create shared flow directory structure
-            String sfDir = "sharedflows/" + name;
-            Files.createDirectories(Paths.get(sfDir));
-            Files.createDirectories(Paths.get(sfDir + "/policies"));
-            Files.createDirectories(Paths.get(sfDir + "/sharedflows"));
-            Files.createDirectories(Paths.get(sfDir + "/resources/jsc"));
-            
-            // Generate main shared flow XML
-            StringBuilder sfXml = new StringBuilder();
-            sfXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-            sfXml.append("<SharedFlowBundle name=\"").append(name).append("\">\n");
-            sfXml.append("    <Description>").append(description).append("</Description>\n");
-            
-            // Add policies section if policies exist
-            if (sf.containsKey("policies")) {
-                List<Map<String, Object>> policies = (List<Map<String, Object>>) sf.get("policies");
-                generatePolicies(sfDir, policies);
-                
-                sfXml.append("    <Policies>\n");
-                for (Map<String, Object> policy : policies) {
-                    String policyName = (String) policy.get("name");
-                    sfXml.append("        <Policy>").append(policyName).append("</Policy>\n");
-                }
-                sfXml.append("    </Policies>\n");
-            }
-            
-            // Add shared flow definition
-            sfXml.append("    <SharedFlows>\n");
-            sfXml.append("        <SharedFlow>default</SharedFlow>\n");
-            sfXml.append("    </SharedFlows>\n");
-            sfXml.append("</SharedFlowBundle>\n");
-            
-            // Write main shared flow XML file
-            Files.write(Paths.get(sfDir + "/" + name + ".xml"), sfXml.toString().getBytes());
-            
-            // Generate default shared flow XML
-            generateDefaultSharedFlow(sfDir, sf);
-            
-            // Create a zip bundle for deployment
-            createZipBundle(sfDir, name);
-        }
+    private final String outputDir;
+
+    public SharedFlowGenerator(String outputDir) {
+        this.outputDir = outputDir;
     }
-    
-    private static void generatePolicies(String sfDir, List<Map<String, Object>> policies) throws Exception {
+
+    /**
+     * Generates an Apigee shared flow bundle based on YAML configuration.
+     * 
+     * @param sharedFlowConfig The shared flow configuration from YAML
+     * @param designName The name of the design (used for grouping)
+     */
+    public void generateSharedFlow(Map<String, Object> sharedFlowConfig, String designName) throws IOException {
+        String name = (String) sharedFlowConfig.get("name");
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Shared flow must have a name");
+        }
+        
+        System.out.println("Generating shared flow: " + name);
+        
+        // Create shared flow directory structure
+        String sharedFlowDir = outputDir + "/" + name;
+        Files.createDirectories(Paths.get(sharedFlowDir));
+        
+        // Create standard Apigee shared flow bundle structure
+        Path sharedflowsPath = Paths.get(sharedFlowDir, "sharedflowbundle");
+        Files.createDirectories(sharedflowsPath);
+        
+        // Create policies directory
+        Path policiesPath = Paths.get(sharedflowsPath.toString(), "policies");
+        Files.createDirectories(policiesPath);
+        
+        // Generate policies
+        if (sharedFlowConfig.containsKey("policies")) {
+            List<Map<String, Object>> policies = (List<Map<String, Object>>) sharedFlowConfig.get("policies");
+            generatePolicies(policiesPath, policies);
+        }
+        
+        // Generate shared flow XML file
+        generateSharedFlowXml(sharedflowsPath, name, sharedFlowConfig);
+        
+        // Generate POM file
+        generatePom(sharedFlowDir, name, designName);
+        
+        System.out.println("Successfully generated shared flow bundle: " + name);
+    }
+
+    /**
+     * Generates policy XML files.
+     */
+    private void generatePolicies(Path policiesPath, List<Map<String, Object>> policies) throws IOException {
         for (Map<String, Object> policy : policies) {
-            String name = (String) policy.get("name");
-            String type = (String) policy.get("type");
-            String displayName = policy.containsKey("displayName") ? 
-                (String) policy.get("displayName") : name;
+            String policyName = (String) policy.get("name");
+            String policyType = (String) policy.get("type");
+            Map<String, Object> configuration = (Map<String, Object>) policy.getOrDefault("configuration", Map.of());
             
-            StringBuilder policyXml = new StringBuilder();
-            policyXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+            // Generate policy XML based on type
+            String policyXml = generatePolicyXml(policyName, policyType, configuration);
             
-            switch (type) {
-                case "AssignMessage":
-                    Map<String, Object> amConfig = (Map<String, Object>) policy.get("configuration");
-                    policyXml.append("<AssignMessage name=\"").append(name).append("\">\n");
-                    policyXml.append("    <DisplayName>").append(displayName).append("</DisplayName>\n");
-                    
-                    if (amConfig.containsKey("assignTo")) {
-                        Map<String, String> assignTo = (Map<String, String>) amConfig.get("assignTo");
-                        policyXml.append("    <AssignTo");
-                        if (assignTo.containsKey("name")) {
-                            policyXml.append(" name=\"").append(assignTo.get("name")).append("\"");
-                        }
-                        policyXml.append("></AssignTo>\n");
-                    }
-                    
-                    if (amConfig.containsKey("content")) {
-                        String content = (String) amConfig.get("content");
-                        policyXml.append("    <Set>\n");
-                        policyXml.append("        <Payload contentType=\"");
-                        if (amConfig.containsKey("contentType")) {
-                            policyXml.append(amConfig.get("contentType"));
-                        } else {
-                            policyXml.append("application/json");
-                        }
-                        policyXml.append("\">").append(content).append("</Payload>\n");
-                        policyXml.append("    </Set>\n");
-                    }
-                    
-                    policyXml.append("</AssignMessage>\n");
-                    break;
+            // Write policy XML file
+            Path policyFile = Paths.get(policiesPath.toString(), policyName + ".xml");
+            Files.writeString(policyFile, policyXml);
+        }
+    }
+
+    /**
+     * Generates policy XML content based on type and configuration.
+     */
+    private String generatePolicyXml(String policyName, String policyType, Map<String, Object> configuration) {
+        StringBuilder xml = new StringBuilder();
+        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+        
+        // Generate XML based on policy type
+        switch (policyType) {
+            case "VerifyAPIKey":
+                xml.append("<VerifyAPIKey name=\"").append(policyName).append("\">\n");
+                xml.append("    <DisplayName>").append(policyName).append("</DisplayName>\n");
+                xml.append("    <Properties/>\n");
                 
-                case "JavaScript":
-                    Map<String, Object> jsConfig = (Map<String, Object>) policy.get("configuration");
-                    policyXml.append("<Javascript name=\"").append(name).append("\">\n");
-                    policyXml.append("    <DisplayName>").append(displayName).append("</DisplayName>\n");
-                    
-                    if (jsConfig.containsKey("timeoutInMillis")) {
-                        policyXml.append("    <TimeoutInMillis>").append(jsConfig.get("timeoutInMillis")).append("</TimeoutInMillis>\n");
-                    }
-                    
-                    // Handle script file
-                    if (jsConfig.containsKey("scriptFile")) {
-                        String scriptFile = (String) jsConfig.get("scriptFile");
-                        policyXml.append("    <ResourceURL>jsc://").append(scriptFile).append("</ResourceURL>\n");
-                        
-                        // If script content is provided, write it to a file
-                        if (jsConfig.containsKey("scriptContent")) {
-                            String scriptContent = (String) jsConfig.get("scriptContent");
-                            Files.write(Paths.get(sfDir + "/resources/jsc/" + scriptFile), 
-                                       scriptContent.getBytes());
-                        }
-                    }
-                    
-                    policyXml.append("</Javascript>\n");
-                    break;
-                    
-                default:
-                    // Generic policy template for other types
-                    policyXml.append("<").append(type).append(" name=\"").append(name).append("\">\n");
-                    policyXml.append("    <DisplayName>").append(displayName).append("</DisplayName>\n");
-                    policyXml.append("</").append(type).append(">\n");
-            }
-            
-            Files.write(Paths.get(sfDir + "/policies/" + name + ".xml"), policyXml.toString().getBytes());
-        }
-    }
-    
-    private static void generateDefaultSharedFlow(String sfDir, Map<String, Object> sf) throws Exception {
-        StringBuilder flowXml = new StringBuilder();
-        flowXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-        flowXml.append("<SharedFlow name=\"default\">\n");
-        
-        if (sf.containsKey("flows")) {
-            List<Map<String, Object>> flows = (List<Map<String, Object>>) sf.get("flows");
-            for (Map<String, Object> flow : flows) {
-                if (flow.containsKey("request")) {
-                    List<Map<String, Object>> requestSteps = (List<Map<String, Object>>) flow.get("request");
-                    for (Map<String, Object> step : requestSteps) {
-                        if (step.containsKey("policy")) {
-                            String policy = (String) step.get("policy");
-                            flowXml.append("    <Step>\n");
-                            flowXml.append("        <Name>").append(policy).append("</Name>\n");
-                            flowXml.append("    </Step>\n");
-                        }
-                    }
+                // Add configuration options
+                xml.append("    <APIKey ref=\"");
+                xml.append(configuration.getOrDefault("keyLocation", "request.header.x-api-key"));
+                xml.append("\"/>\n");
+                
+                xml.append("</VerifyAPIKey>\n");
+                break;
+                
+            case "MessageLogging":
+                xml.append("<MessageLogging name=\"").append(policyName).append("\">\n");
+                xml.append("    <DisplayName>").append(policyName).append("</DisplayName>\n");
+                xml.append("    <Loggers>\n");
+                xml.append("        <Logger name=\"MessageLogger\">\n");
+                xml.append("            <LogLevel>").append(configuration.getOrDefault("logLevel", "INFO")).append("</LogLevel>\n");
+                boolean logToStdout = (Boolean) configuration.getOrDefault("logToStdout", true);
+                if (logToStdout) {
+                    xml.append("            <Source>stdout</Source>\n");
                 }
-            }
-        } else if (sf.containsKey("policies") && !((List<Map<String, Object>>) sf.get("policies")).isEmpty()) {
-            // If no flows defined but policies exist, include the first policy
-            String firstPolicy = (String) ((List<Map<String, Object>>) sf.get("policies")).get(0).get("name");
-            flowXml.append("    <Step>\n");
-            flowXml.append("        <Name>").append(firstPolicy).append("</Name>\n");
-            flowXml.append("    </Step>\n");
+                xml.append("            <Message>Message content: {request.content}</Message>\n");
+                xml.append("        </Logger>\n");
+                xml.append("    </Loggers>\n");
+                xml.append("</MessageLogging>\n");
+                break;
+                
+            default:
+                xml.append("<!-- Placeholder for ").append(policyType).append(" policy: ").append(policyName).append(" -->\n");
+                xml.append("<Policy name=\"").append(policyName).append("\">\n");
+                xml.append("    <DisplayName>").append(policyName).append("</DisplayName>\n");
+                xml.append("    <!-- Configuration would go here -->\n");
+                xml.append("</Policy>\n");
         }
         
-        flowXml.append("</SharedFlow>\n");
+        return xml.toString();
+    }
+
+    /**
+     * Generates the main shared flow XML file.
+     */
+    private void generateSharedFlowXml(Path sharedflowsPath, String name, Map<String, Object> sharedFlowConfig) throws IOException {
+        StringBuilder xml = new StringBuilder();
+        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+        xml.append("<SharedFlowBundle revision=\"1\" name=\"").append(name).append("\">\n");
         
-        Files.write(Paths.get(sfDir + "/sharedflows/default.xml"), flowXml.toString().getBytes());
-    }
-    
-    private static void createZipBundle(String sfDir, String name) throws Exception {
-        String zipFileName = sfDir + "/" + name + ".zip";
-        try (ZipOutputStream zipOut = new ZipOutputStream(new FileOutputStream(zipFileName))) {
-            File sfDirFile = new File(sfDir);
-            zipDirectory(sfDirFile, name, zipOut);
+        // Add description if provided
+        String description = (String) sharedFlowConfig.getOrDefault("description", "");
+        if (!description.isEmpty()) {
+            xml.append("    <Description>").append(description).append("</Description>\n");
         }
-        System.out.println("Created ZIP bundle: " + zipFileName);
-    }
-    
-    private static void zipDirectory(File folder, String parentFolder, ZipOutputStream zipOut) throws Exception {
-        for (File file : folder.listFiles()) {
-            if (file.isDirectory()) {
-                zipDirectory(file, parentFolder + "/" + file.getName(), zipOut);
-                continue;
+        
+        // Create basic shared flow configuration
+        xml.append("    <SharedFlows>\n");
+        xml.append("        <SharedFlow name=\"default\">\n");
+        xml.append("            <Step>\n");
+        
+        // Add policy references
+        if (sharedFlowConfig.containsKey("policies")) {
+            List<Map<String, Object>> policies = (List<Map<String, Object>>) sharedFlowConfig.get("policies");
+            for (Map<String, Object> policy : policies) {
+                String policyName = (String) policy.get("name");
+                xml.append("                <Name>").append(policyName).append("</Name>\n");
             }
-            
-            // Skip the zip file itself
-            if (file.getName().endsWith(".zip")) continue;
-            
-            FileInputStream fis = new FileInputStream(file);
-            String entryPath = parentFolder + "/" + file.getName();
-            ZipEntry zipEntry = new ZipEntry(entryPath);
-            zipOut.putNextEntry(zipEntry);
-            
-            byte[] bytes = new byte[1024];
-            int length;
-            while ((length = fis.read(bytes)) >= 0) {
-                zipOut.write(bytes, 0, length);
-            }
-            fis.close();
         }
+        
+        xml.append("            </Step>\n");
+        xml.append("        </SharedFlow>\n");
+        xml.append("    </SharedFlows>\n");
+        xml.append("</SharedFlowBundle>\n");
+        
+        // Write shared flow XML file
+        Path sharedFlowFile = Paths.get(sharedflowsPath.toString(), "sharedflowbundle.xml");
+        Files.writeString(sharedFlowFile, xml.toString());
+    }
+
+    /**
+     * Generates Maven POM file for the shared flow.
+     */
+    private void generatePom(String sharedFlowDir, String name, String designName) throws IOException {
+        StringBuilder pom = new StringBuilder();
+        pom.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        pom.append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n");
+        pom.append("         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
+        pom.append("         xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n");
+        pom.append("    <modelVersion>4.0.0</modelVersion>\n\n");
+        
+        pom.append("    <groupId>com.apigee.edge.sharedflow.").append(designName).append("</groupId>\n");
+        pom.append("    <artifactId>").append(name).append("</artifactId>\n");
+        pom.append("    <version>1.0</version>\n");
+        pom.append("    <packaging>pom</packaging>\n\n");
+        
+        pom.append("    <properties>\n");
+        pom.append("        <apigee.org>${env.APIGEE_ORG}</apigee.org>\n");
+        pom.append("        <apigee.env>${env.APIGEE_ENV}</apigee.env>\n");
+        pom.append("        <apigee.config.options>update</apigee.config.options>\n");
+        pom.append("        <apigee.config.dir>${project.basedir}</apigee.config.dir>\n");
+        pom.append("    </properties>\n\n");
+        
+        // Add build configuration with apigee-config-maven-plugin
+        pom.append("    <build>\n");
+        pom.append("        <plugins>\n");
+        pom.append("            <plugin>\n");
+        pom.append("                <groupId>com.apigee.edge.config</groupId>\n");
+        pom.append("                <artifactId>apigee-config-maven-plugin</artifactId>\n");
+        pom.append("                <version>2.3.0</version>\n");
+        pom.append("                <executions>\n");
+        pom.append("                    <execution>\n");
+        pom.append("                        <id>create-shared-flow</id>\n");
+        pom.append("                        <phase>install</phase>\n");
+        pom.append("                        <goals>\n");
+        pom.append("                            <goal>sharedflows</goal>\n");
+        pom.append("                        </goals>\n");
+        pom.append("                    </execution>\n");
+        pom.append("                </executions>\n");
+        pom.append("            </plugin>\n");
+        pom.append("        </plugins>\n");
+        pom.append("    </build>\n");
+        pom.append("</project>\n");
+        
+        // Write POM file
+        Path pomFile = Paths.get(sharedFlowDir, "pom.xml");
+        Files.writeString(pomFile, pom.toString());
     }
 }

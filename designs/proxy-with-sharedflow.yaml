@@ -1,44 +1,43 @@
----
-sharedFlows:
-  - name: security-flow
-    description: Common security checks
-    policies:
-      - name: oauth-validation
-        type: OAuthV2
-        displayName: Validate OAuth Token
-        configuration:
-          operation: VerifyAccessToken
-      - name: threat-protection
-        type: JSONThreatProtection
-        displayName: JSON Threat Protection
-    flows:
-      - name: default
-        request:
-          - policy: oauth-validation
-          - policy: threat-protection
-
-proxies:
-  - name: product-api
-    basePath: /v1/products
-    description: Product API with shared flow for security
-    policies:
-      - name: product-quota
-        type: Quota
-        displayName: Product API Quota
-        configuration:
-          limit: 50
-          timeUnit: minute
-    endpoints:
-      - name: default
-        type: proxy
-        basePath: /v1/products
-        flows:
-          - name: product-flow
-            condition: "true"
-            request:
-              - sharedFlow: security-flow  # This will be converted to a
-                                          # FlowCallout policy
-              - policy: product-quota
-    targetEndpoints:
-      - name: default
-        url: https://api.example.com/products
+apigee:
+  name: "sample-api-design"
+  version: "1.0"
+  sharedFlows:
+    - name: "common-security"
+      description: "Common security policies for all APIs"
+      policies:
+        - name: "Verify-API-Key"
+          type: "VerifyAPIKey"
+          configuration:
+            enabled: true
+            continueOnError: false
+            keyLocation: "request.header.x-api-key"
+    - name: "common-logging"
+      description: "Common logging policies for all APIs"
+      policies:
+        - name: "Message-Logging"
+          type: "MessageLogging"
+          configuration:
+            logLevel: "INFO"
+            logToStdout: true
+  proxies:
+    - name: "sample-api"
+      basePath: "/v1/sample"
+      target: "https://mocktarget.apigee.net"
+      dependencies:
+        sharedFlows: ["common-security", "common-logging"]
+      policies:
+        - name: "Quota"
+          type: "Quota"
+          configuration:
+            limit: 1000
+            timeUnit: "minute"
+      flows:
+        - name: "default"
+          condition: "true"
+          request:
+            - policy: "Verify-API-Key"
+            - policy: "Quota"
+            - policy: "Message-Logging"
+      endpointSecurity:
+        oauthV2:
+          enabled: true
