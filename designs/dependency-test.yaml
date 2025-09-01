@@ -1,0 +1,48 @@
+apigee:
+  name: dependency-test
+  
+  sharedFlows:
+    - name: auth-flow
+      description: "Authentication shared flow"
+      policies:
+        - name: API-Key-Check
+          type: VerifyAPIKey
+          configuration:
+            keyLocation: "request.header.apikey"
+      flows:
+        - name: auth
+          condition: "true"
+          request:
+            - policy: API-Key-Check
+  
+  proxies:
+    - name: test-proxy
+      basePath: "/v1/test"
+      target: "https://httpbin.org/anything"
+      description: "Test proxy with shared flow dependency"
+      dependsOn:
+        sharedFlows: [auth-flow]
+      policies:
+        - name: Request-Quota
+          type: Quota
+          configuration:
+            limit: 100
+            timeUnit: minute
+      flows:
+        - name: main-flow
+          condition: "true"
+          request:
+            - policy: API-Key-Check
+            - policy: Request-Quota
+
+  apiProducts:
+    - name: TestProduct
+      displayName: "Test Product"
+      description: "Product for testing deployment order"
+      proxies: [test-proxy]
+      environments: [eval]
+      approvalType: AUTO
+      quota:
+        limit: 1000
+        interval: 1
+        timeUnit: hour

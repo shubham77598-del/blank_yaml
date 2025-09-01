@@ -1,0 +1,278 @@
+apigee:
+  name: comprehensive-api-design
+  version: "2.0"
+  
+  # Global configuration that can use environment variables
+  settings:
+    organization: "${APIGEE_ORG}"
+    environment: "${APIGEE_ENV}"
+  
+  # Shared Flows - reusable components that can be referenced by proxies
+  sharedFlows:
+    - name: security-shared-flow
+      description: "Comprehensive security policies for all APIs"
+      policies:
+        - name: Verify-API-Key
+          type: VerifyAPIKey
+          displayName: "API Key Verification"
+          configuration:
+            keyLocation: "request.header.x-api-key"
+            
+        - name: OAuth-Validation
+          type: OAuthV2
+          displayName: "OAuth Token Validation"
+          configuration:
+            operation: "VerifyAccessToken"
+            
+        - name: JSON-Threat-Protection
+          type: JSONThreatProtection
+          displayName: "JSON Threat Protection"
+          configuration:
+            arrayElementCount: 100
+            objectEntryCount: 50
+            
+        - name: Spike-Arrest
+          type: SpikeArrest
+          displayName: "Spike Arrest Protection"
+          configuration:
+            rate: "50ps"
+      flows:
+        - name: security-flow
+          condition: "true"
+          request:
+            - policy: Verify-API-Key
+            - policy: OAuth-Validation
+            - policy: JSON-Threat-Protection
+            - policy: Spike-Arrest
+    
+    - name: logging-shared-flow
+      description: "Centralized logging for audit and monitoring"
+      policies:
+        - name: Request-Logger
+          type: MessageLogging
+          displayName: "Request Message Logging"
+          configuration:
+            logLevel: "INFO"
+            logToStdout: true
+            
+        - name: Response-Logger
+          type: MessageLogging
+          displayName: "Response Message Logging"
+          configuration:
+            logLevel: "INFO"
+            logToStdout: true
+      flows:
+        - name: logging-flow
+          condition: "true"
+          request:
+            - policy: Request-Logger
+          response:
+            - policy: Response-Logger
+    
+    - name: transformation-shared-flow
+      description: "Common data transformation utilities"
+      policies:
+        - name: Request-Transform
+          type: JavaScript
+          displayName: "Transform Request Data"
+          configuration:
+            scriptContent: |
+              // Transform incoming request
+              var request = context.getVariable('request');
+              var payload = JSON.parse(request.content);
+              
+              // Add metadata
+              payload.metadata = {
+                timestamp: new Date().toISOString(),
+                apiVersion: "v2",
+                requestId: context.getVariable('messageid')
+              };
+              
+              // Standardize field names
+              if (payload.user_id) {
+                payload.userId = payload.user_id;
+                delete payload.user_id;
+              }
+              
+              context.setVariable('request.content', JSON.stringify(payload));
+              
+        - name: Response-Transform
+          type: JavaScript
+          displayName: "Transform Response Data"
+          configuration:
+            scriptContent: |
+              // Transform outgoing response
+              var response = context.getVariable('response');
+              if (response.content) {
+                var payload = JSON.parse(response.content);
+                
+                // Add API metadata to response
+                payload._meta = {
+                  apiName: context.getVariable('proxy.name'),
+                  version: "2.0",
+                  timestamp: new Date().toISOString()
+                };
+                
+                context.setVariable('response.content', JSON.stringify(payload));
+              }
+              
+        - name: Assign-CORS-Headers
+          type: AssignMessage
+          displayName: "Set CORS Headers"
+          configuration:
+            verb: null
+            payload: null
+      flows:
+        - name: transform-flow
+          condition: "true"
+          request:
+            - policy: Request-Transform
+          response:
+            - policy: Response-Transform
+            - policy: Assign-CORS-Headers
+
+  # API Proxies - the main API endpoints
+  proxies:
+    - name: customer-management-api
+      basePath: "/v2/customers"
+      target: "https://backend.example.com/api/customers"
+      description: "Customer Management API with full security and transformation"
+      dependsOn:
+        sharedFlows: 
+          - security-shared-flow
+          - logging-shared-flow
+          - transformation-shared-flow
+      policies:
+        - name: Customer-Quota
+          type: Quota
+          displayName: "Customer API Rate Limit"
+          configuration:
+            limit: 1000
+            timeUnit: hour
+            interval: 1
+            
+        - name: Backend-Service-Call
+          type: ServiceCallout
+          displayName: "Validate Customer with Backend"
+          configuration:
+            url: "https://validation.example.com/validate"
+            method: "POST"
+            
+        - name: Custom-JS-Policy
+          type: JavaScript
+          displayName: "Custom Business Logic"
+          configuration:
+            scriptContent: |
+              // Custom validation logic
+              var customerId = context.getVariable('request.queryparam.customer_id');
+              if (!customerId) {
+                context.setVariable('error.message', 'Customer ID is required');
+                context.setVariable('error.code', '400');
+              }
+      flows:
+        - name: get-customer
+          condition: "request.verb = 'GET'"
+          request:
+            - policy: Verify-API-Key
+            - policy: Customer-Quota
+            - policy: Custom-JS-Policy
+            - policy: Request-Logger
+        - name: create-customer
+          condition: "request.verb = 'POST'"
+          request:
+            - policy: Verify-API-Key
+            - policy: OAuth-Validation
+            - policy: JSON-Threat-Protection
+            - policy: Request-Transform
+            - policy: Backend-Service-Call
+        - name: update-customer
+          condition: "request.verb = 'PUT'"
+          request:
+            - policy: Verify-API-Key
+            - policy: OAuth-Validation
+            - policy: Customer-Quota
+            - policy: Request-Transform
+    
+    - name: product-catalog-api
+      basePath: "/v2/products"
+      target: "https://catalog.example.com/api/products"
+      description: "Product Catalog API with basic security"
+      dependsOn:
+        sharedFlows:
+          - security-shared-flow
+          - logging-shared-flow
+      policies:
+        - name: Product-Quota
+          type: Quota
+          displayName: "Product API Rate Limit"
+          configuration:
+            limit: 2000
+            timeUnit: hour
+            interval: 1
+            
+        - name: Cache-Policy
+          type: AssignMessage
+          displayName: "Set Cache Headers"
+          configuration:
+            payload: null
+            verb: null
+      flows:
+        - name: get-products
+          condition: "request.verb = 'GET'"
+          request:
+            - policy: Verify-API-Key
+            - policy: Product-Quota
+            - policy: Request-Logger
+          response:
+            - policy: Cache-Policy
+            - policy: Response-Logger
+
+  # API Products - configuration for API management
+  apiProducts:
+    - name: PremiumCustomerProduct
+      displayName: "Premium Customer Management Product"
+      description: "Full access to customer management APIs"
+      proxies:
+        - customer-management-api
+        - product-catalog-api
+      environments:
+        - eval
+        - prod
+      approvalType: AUTO
+      quota:
+        limit: 10000
+        interval: 1
+        timeUnit: hour
+      scopes:
+        - customer.read
+        - customer.write
+        - product.read
+        
+    - name: BasicProductCatalog
+      displayName: "Basic Product Catalog Access"
+      description: "Read-only access to product catalog"
+      proxies:
+        - product-catalog-api
+      environments:
+        - eval
+        - prod
+      approvalType: AUTO
+      quota:
+        limit: 5000
+        interval: 1
+        timeUnit: hour
+      scopes:
+        - product.read
+
+  # Additional configuration entities can be added here
+  developers:
+    - name: "api-developer@example.com"
+      firstName: "API"
+      lastName: "Developer"
+      apps:
+        - name: "customer-app"
+          products: 
+            - PremiumCustomerProduct
+        - name: "catalog-app"
+          products:
+            - BasicProductCatalog

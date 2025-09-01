@@ -1,20 +1,53 @@
-# Apigee Design Driven Deployment
+# Apigee Design-Driven Deployment
 
-This repository demonstrates **single YAML design → generated Apigee X artifacts → automated deploy**.
+This repository demonstrates **single YAML design → generated Apigee X artifacts → automated deploy** with comprehensive policy support, validation, and configuration management.
 
 ## Flow
 
-1. Developer edits `designs/*.yaml`.
+1. Developer edits `designs/*.yaml` files with comprehensive API definitions
 2. Push triggers GitHub Action:
-   - Runs Java generator (SnakeYAML) to build:
+   - Runs Java generator (SnakeYAML) with validation to build:
      - `generated/sharedflows/<sf>/sharedflowbundle/...`
      - `generated/proxies/<proxy>/apiproxy/...`
-     - `generated/config/entities/*.json` (API Products)
+     - `generated/config/entities/*.json` (API Products, Developers)
      - Each with its own `pom.xml`
    - Deploy order:
      1. Shared Flows (import + deploy)
      2. Proxies (import + deploy)
-     3. Config (API Products via apigee-config-maven-plugin)
+     3. Config (API Products, Developers via apigee-config-maven-plugin)
+
+## Enhanced Features
+
+### Comprehensive Policy Support
+- **Quota** - Rate limiting with configurable limits and time units
+- **VerifyAPIKey** - API key validation with flexible key locations
+- **JavaScript** - Custom business logic with inline or external scripts
+- **AssignMessage** - Message transformation and header manipulation
+- **SpikeArrest** - Traffic spike protection
+- **JSONThreatProtection** - JSON payload security validation
+- **OAuthV2** - OAuth token validation and operations
+- **ServiceCallout** - External service integration
+- **CORS** - Cross-origin resource sharing configuration
+- **MessageLogging** - Centralized logging and audit trails
+- **RateLimiter** - Advanced rate limiting for shared flows
+
+### Validation & Error Handling
+- **Dependency Validation** - Ensures referenced shared flows exist
+- **Policy Structure Validation** - Validates required fields and configurations
+- **Unknown Policy Warnings** - Alerts for unsupported policy types
+- **YAML Structure Validation** - Comprehensive design file validation
+
+### Environment Variable Substitution
+- **Dynamic Configuration** - Use `${APIGEE_ORG}`, `${APIGEE_ENV}` and other environment variables
+- **Environment-Specific Deployments** - Configure different settings per environment
+- **CI/CD Integration** - Seamless integration with GitHub Actions secrets
+
+### Comprehensive Entity Support
+- **API Products** - Full product configuration with scopes, quotas, and environments
+- **Developers** - Developer account management
+- **Applications** - Developer app configuration (planned)
+- **Shared Flows** - Reusable policy collections with dependency management
+- **Proxies** - Complete API proxy definitions with flows and policies
 
 ## Key Plugins
 
@@ -34,61 +67,129 @@ GitHub Secret `APIGEE_SA_KEY_JSON` must contain the raw JSON of a GCP service ac
 
 Workflow writes it to `sa.json` (ignored by git).
 
-## Example Design (excerpt)
+## Design File Structure
+
+### Complete Example (see `designs/comprehensive-example.yaml`)
 
 ```yaml
 apigee:
-  name: sample
+  name: comprehensive-api-design
+  version: "2.0"
+  
+  # Environment variables supported
+  settings:
+    organization: "${APIGEE_ORG}"
+    environment: "${APIGEE_ENV}"
+  
+  # Reusable shared flows
   sharedFlows:
-    - name: common-logging
+    - name: security-shared-flow
+      description: "Comprehensive security policies"
       policies:
         - name: Verify-API-Key
           type: VerifyAPIKey
-  proxies:
-    - name: sample-proxy
-      basePath: /v1/sample
-      target: https://mocktarget.apigee.net
-      dependsOn:
-        sharedFlows: [ common-logging ]
-      policies:
-        - name: QuotaPolicy
-          type: Quota
+          displayName: "API Key Verification"
+          configuration:
+            keyLocation: "request.header.x-api-key"
+        - name: Spike-Arrest
+          type: SpikeArrest
+          configuration:
+            rate: "50ps"
       flows:
-        - name: default
-          condition: true
+        - name: security-flow
+          condition: "true"
           request:
             - policy: Verify-API-Key
-            - policy: QuotaPolicy
+            - policy: Spike-Arrest
+  
+  # API proxies with dependencies
+  proxies:
+    - name: customer-management-api
+      basePath: "/v2/customers"
+      target: "https://backend.example.com/api/customers"
+      dependsOn:
+        sharedFlows: [security-shared-flow]
+      policies:
+        - name: Customer-Quota
+          type: Quota
+          configuration:
+            limit: 1000
+            timeUnit: hour
+      flows:
+        - name: get-customer
+          condition: "request.verb = 'GET'"
+          request:
+            - policy: Verify-API-Key
+            - policy: Customer-Quota
+  
+  # API Products with comprehensive configuration
   apiProducts:
-    - name: SampleProduct
-      proxies: [ sample-proxy ]
-      environments: [ eval ]
+    - name: PremiumCustomerProduct
+      displayName: "Premium Customer Management"
+      proxies: [customer-management-api]
+      environments: [eval, prod]
+      quota:
+        limit: 10000
+        interval: 1
+        timeUnit: hour
+      scopes: [customer.read, customer.write]
+  
+  # Developer management
+  developers:
+    - name: "api-developer@example.com"
+      firstName: "API"
+      lastName: "Developer"
 ```
 
 ## Local Usage
 
-```powershell
-# Generate
+```bash
+# Generate with validation
 mvn -q -DcleanGenerated=true compile exec:java -Dexec.mainClass="com.company.design.DesignParser"
 
 # Deploy one shared flow
-cd generated/sharedflows/common-logging
-mvn install -Dapigee.org=YOUR_ORG -Dapigee.env=eval -DserviceAccountFile=PATH\TO\sa.json
+cd generated/sharedflows/security-shared-flow
+mvn install -Dapigee.org=YOUR_ORG -Dapigee.env=eval -DserviceAccountFile=PATH/TO/sa.json
 ```
 
-Or full scripted:
+Or full scripted deployment:
 
 ```powershell
 pwsh scripts/deploy-local.ps1 -Org YOUR_ORG -Env eval -ServiceAccount C:\path\sa.json -Regenerate
 ```
 
-## Adding More Policies
+## Design File Examples
 
-Extend `SharedFlowGenerator.renderPolicy()` and `ProxyGenerator.renderPolicy()` with new cases (SpikeArrest, AssignMessage, etc). If complexity grows, refactor into a `PolicyWriter` interface.
+| File | Description |
+|------|-------------|
+| `designs/sample.yaml` | Basic proxy with shared flow |
+| `designs/comprehensive-example.yaml` | Full-featured example with all policy types |
+| `basic-proxy.yaml` | Simple proxy configuration |
+| `proxy-with-javascript.yaml` | JavaScript policy examples |
+| `proxy-with-sharedflow.yaml` | Shared flow integration |
 
-## Token Substitution (Optional)
+## Adding New Policies
 
-If you want environment-driven tokens (e.g. `${APIGEE_ENV}` inside the YAML) add a simple post-load pass in `DesignParser` to replace placeholders with environment variables.
+Extend `SharedFlowGenerator.renderPolicy()` and `ProxyGenerator.renderPolicy()` with new policy cases. Add the policy type to `knownPolicyTypes` in `DesignParser.java` to avoid warnings.
+
+Example:
+```java
+case "NewPolicyType":
+    String param = val(cfg.get("parameter"));
+    sb.append("<NewPolicyType name=\"").append(name).append("\">\n")
+      .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+      .append("  <Parameter>").append(param).append("</Parameter>\n")
+      .append("</NewPolicyType>\n");
+    break;
+```
+
+## Validation Features
+
+- **Dependency Checking** - Validates shared flow references in proxy dependencies
+- **Required Fields** - Ensures names and types are specified for all entities
+- **Policy Validation** - Checks for proper policy structure and configuration
+- **Environment Variables** - Warns about missing environment variables during substitution
+- **YAML Structure** - Validates overall design file structure and format
 
 ## Why Not the Old Edge Plugin?
 
@@ -96,11 +197,13 @@ The legacy `io.apigee.build-tools.enterprise4g` plugin has brittle behavior (Nul
 
 ## Future Enhancements
 
-- Validation for missing referenced policies
-- Multiple environments deploy loop
-- More config entity types (developers, apps)
+- Developer application management
+- Multiple environment deployment loops  
+- More config entity types (caches, KVMs)
 - Unit tests for YAML parsing
 - Property-driven versioning
+- Policy template system
+- Advanced dependency resolution
 
 ## License
 

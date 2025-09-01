@@ -55,19 +55,121 @@ public class ProxyGenerator {
 
     private String renderPolicy(String name, String type, Map<String,Object> cfg) {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        if ("Quota".equals(type)) {
-            String limit = val(cfg.get("limit")); if (limit == null) limit = "1000";
-            String timeUnit = val(cfg.get("timeUnit")); if (timeUnit == null) timeUnit = "minute";
-            sb.append("<Quota name=\"").append(name).append("\">\n")
-              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
-              .append("  <Allow count=\"").append(limit).append("\"/>\n")
-              .append("  <Interval>1</Interval>\n")
-              .append("  <TimeUnit>").append(timeUnit).append("</TimeUnit>\n")
-              .append("</Quota>\n");
-        } else {
-            sb.append("<Policy name=\"").append(name).append("\">\n")
-              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
-              .append("</Policy>\n");
+        String displayName = val(cfg.get("displayName"));
+        if (displayName == null) displayName = name;
+        
+        switch (type) {
+            case "Quota":
+                String limit = val(cfg.get("limit")); if (limit == null) limit = "1000";
+                String timeUnit = val(cfg.get("timeUnit")); if (timeUnit == null) timeUnit = "minute";
+                String interval = val(cfg.get("interval")); if (interval == null) interval = "1";
+                sb.append("<Quota name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <Allow count=\"").append(limit).append("\"/>\n")
+                  .append("  <Interval>").append(interval).append("</Interval>\n")
+                  .append("  <TimeUnit>").append(timeUnit).append("</TimeUnit>\n")
+                  .append("</Quota>\n");
+                break;
+                
+            case "VerifyAPIKey":
+                String apiKey = val(cfg.get("apiKey")); 
+                if (apiKey == null) apiKey = "request.header.x-api-key";
+                sb.append("<VerifyAPIKey name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <APIKey ref=\"").append(apiKey).append("\"/>\n")
+                  .append("</VerifyAPIKey>\n");
+                break;
+                
+            case "JavaScript":
+                String scriptFile = val(cfg.get("scriptFile"));
+                String scriptContent = val(cfg.get("scriptContent"));
+                sb.append("<Javascript name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n");
+                if (scriptFile != null) {
+                    sb.append("  <ResourceURL>jsc://").append(scriptFile).append("</ResourceURL>\n");
+                } else if (scriptContent != null) {
+                    sb.append("  <Source><![CDATA[\n").append(scriptContent).append("\n  ]]></Source>\n");
+                }
+                sb.append("</Javascript>\n");
+                break;
+                
+            case "AssignMessage":
+                String payload = val(cfg.get("payload"));
+                String verb = val(cfg.get("verb"));
+                sb.append("<AssignMessage name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n");
+                if (verb != null) {
+                    sb.append("  <Set><Verb>").append(verb).append("</Verb></Set>\n");
+                }
+                if (payload != null) {
+                    sb.append("  <Set><Payload contentType=\"application/json\">").append(payload).append("</Payload></Set>\n");
+                }
+                sb.append("</AssignMessage>\n");
+                break;
+                
+            case "SpikeArrest":
+                String rate = val(cfg.get("rate")); if (rate == null) rate = "10ps";
+                sb.append("<SpikeArrest name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <Rate>").append(rate).append("</Rate>\n")
+                  .append("</SpikeArrest>\n");
+                break;
+                
+            case "JSONThreatProtection":
+                String arrayLimit = val(cfg.get("arrayElementCount")); if (arrayLimit == null) arrayLimit = "100";
+                String objectLimit = val(cfg.get("objectEntryCount")); if (objectLimit == null) objectLimit = "100";
+                sb.append("<JSONThreatProtection name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <ArrayElementCount>").append(arrayLimit).append("</ArrayElementCount>\n")
+                  .append("  <ObjectEntryCount>").append(objectLimit).append("</ObjectEntryCount>\n")
+                  .append("</JSONThreatProtection>\n");
+                break;
+                
+            case "OAuthV2":
+                String operation = val(cfg.get("operation")); if (operation == null) operation = "VerifyAccessToken";
+                sb.append("<OAuthV2 name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <Operation>").append(operation).append("</Operation>\n")
+                  .append("</OAuthV2>\n");
+                break;
+                
+            case "ServiceCallout":
+                String url = val(cfg.get("url")); if (url == null) url = "https://httpbin.org/get";
+                String method = val(cfg.get("method")); if (method == null) method = "GET";
+                sb.append("<ServiceCallout name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <Request><Set>\n")
+                  .append("    <Verb>").append(method).append("</Verb>\n")
+                  .append("    <URL>").append(url).append("</URL>\n")
+                  .append("  </Set></Request>\n")
+                  .append("</ServiceCallout>\n");
+                break;
+                
+            case "CORS":
+                String origins = val(cfg.get("allowOrigins")); if (origins == null) origins = "*";
+                String methods = val(cfg.get("allowMethods")); if (methods == null) methods = "GET,POST,PUT,DELETE";
+                sb.append("<CORS name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <AllowOrigins>").append(origins).append("</AllowOrigins>\n")
+                  .append("  <AllowMethods>").append(methods).append("</AllowMethods>\n")
+                  .append("</CORS>\n");
+                break;
+                
+            case "MessageLogging":
+                String logLevel = val(cfg.get("logLevel")); if (logLevel == null) logLevel = "INFO";
+                String syslog = val(cfg.get("syslog")); if (syslog == null) syslog = "true";
+                sb.append("<MessageLogging name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("  <Syslog><LogLevel>").append(logLevel).append("</LogLevel></Syslog>\n")
+                  .append("</MessageLogging>\n");
+                break;
+                
+            default:
+                System.out.println("  [WARNING] Unknown policy type: " + type + " for " + name + ". Creating generic policy.");
+                sb.append("<").append(type).append(" name=\"").append(name).append("\">\n")
+                  .append("  <DisplayName>").append(displayName).append("</DisplayName>\n")
+                  .append("</").append(type).append(">\n");
+                break;
         }
         return sb.toString();
     }
