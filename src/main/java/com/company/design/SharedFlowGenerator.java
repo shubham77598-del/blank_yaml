@@ -47,7 +47,25 @@ public class SharedFlowGenerator {
 
     private String renderPolicy(String name, String type, Map<String,Object> cfg) {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        if ("RateLimiter".equals(type)) {
+        
+        if ("VerifyAPIKey".equals(type)) {
+            String keyLocation = val(cfg.get("keyLocation")); 
+            if (keyLocation == null) keyLocation = "request.header.x-api-key";
+            sb.append("<VerifyAPIKey name=\"").append(name).append("\">\n")
+              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+              .append("  <APIKey ref=\"").append(keyLocation).append("\"/>\n")
+              .append("</VerifyAPIKey>\n");
+        } else if ("MessageLogging".equals(type)) {
+            String logLevel = val(cfg.get("logLevel")); 
+            if (logLevel == null) logLevel = "INFO";
+            boolean logToStdout = "true".equals(val(cfg.get("logToStdout")));
+            sb.append("<MessageLogging name=\"").append(name).append("\">\n")
+              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+              .append("  <Syslog>\n")
+              .append("    <Message>{client.ip} {request.verb} {request.uri}</Message>\n")
+              .append("  </Syslog>\n")
+              .append("</MessageLogging>\n");
+        } else if ("RateLimiter".equals(type)) {
             String limit = val(cfg.get("limit")); if (limit == null) limit = "100";
             String timeUnit = val(cfg.get("timeUnit")); if (timeUnit == null) timeUnit = "minute";
             sb.append("<RateLimiter name=\"").append(name).append("\">\n")
@@ -57,9 +75,10 @@ public class SharedFlowGenerator {
               .append("  <TimeUnit>").append(timeUnit).append("</TimeUnit>\n")
               .append("</RateLimiter>\n");
         } else {
-            sb.append("<Policy name=\"").append(name).append("\">\n")
+            // Generic policy template for unknown types
+            sb.append("<").append(type).append(" name=\"").append(name).append("\">\n")
               .append("  <DisplayName>").append(name).append("</DisplayName>\n")
-              .append("</Policy>\n");
+              .append("</").append(type).append(">\n");
         }
         return sb.toString();
     }
