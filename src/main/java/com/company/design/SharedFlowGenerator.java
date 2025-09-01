@@ -25,8 +25,7 @@ public class SharedFlowGenerator {
         Files.createDirectories(policiesPath);
 
         List<Map<String, Object>> policies = safeList(sfConfig.get("policies"));
-        for (int i = 0; i < policies.size(); i++) {
-            Map<String, Object> p = policies.get(i);
+        for (Map<String, Object> p : policies) {
             String pName = value(p.get("name"));
             if (pName == null || pName.trim().isEmpty()) continue;
             String pType = value(p.get("type"));
@@ -75,8 +74,7 @@ public class SharedFlowGenerator {
         sb.append("<SharedFlowBundle name=\"").append(name).append("\" revision=\"1\">\n");
         sb.append("  <SharedFlows>\n");
         sb.append("    <SharedFlow name=\"default\">\n");
-        for (int i = 0; i < policies.size(); i++) {
-            Map<String, Object> p = policies.get(i);
+        for (Map<String, Object> p : policies) {
             String pName = value(p.get("name"));
             if (pName != null) {
                 sb.append("      <Step><Name>").append(pName).append("</Name></Step>\n");
@@ -102,25 +100,15 @@ public class SharedFlowGenerator {
         sb.append("  <groupId>").append(group).append("</groupId>\n");
         sb.append("  <artifactId>").append(name).append("</artifactId>\n");
         sb.append("  <version>1.0</version>\n");
-        sb.append("  <packaging>pom</packaging>\n");
+        sb.append("  <packaging>apigee</packaging>\n");  // IMPORTANT
+        sb.append("  <name>").append(name).append("</name>\n");
         sb.append("  <build>\n");
         sb.append("    <plugins>\n");
         sb.append("      <plugin>\n");
         sb.append("        <groupId>io.apigee.build-tools.enterprise4g</groupId>\n");
         sb.append("        <artifactId>apigee-edge-maven-plugin</artifactId>\n");
         sb.append("        <version>1.2.1</version>\n");
-        sb.append("        <executions>\n");
-        sb.append("          <execution>\n");
-        sb.append("            <id>configure</id>\n");
-        sb.append("            <phase>package</phase>\n");
-        sb.append("            <goals><goal>configure</goal></goals>\n");
-        sb.append("          </execution>\n");
-        sb.append("          <execution>\n");
-        sb.append("            <id>deploy</id>\n");
-        sb.append("            <phase>install</phase>\n");
-        sb.append("            <goals><goal>deploy</goal></goals>\n");
-        sb.append("          </execution>\n");
-        sb.append("        </executions>\n");
+        sb.append("        <extensions>true</extensions>\n"); // Activate custom packaging
         sb.append("        <configuration>\n");
         sb.append("          <org>${apigee.org}</org>\n");
         sb.append("          <env>${apigee.env}</env>\n");
@@ -129,6 +117,16 @@ public class SharedFlowGenerator {
         sb.append("          <override>true</override>\n");
         sb.append("          <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>\n");
         sb.append("        </configuration>\n");
+        sb.append("        <executions>\n");
+        sb.append("          <execution>\n");
+        sb.append("            <id>deploy-sharedflow</id>\n");
+        sb.append("            <phase>install</phase>\n");
+        sb.append("            <goals>\n");
+        sb.append("              <goal>configure</goal>\n");
+        sb.append("              <goal>deploy</goal>\n");
+        sb.append("            </goals>\n");
+        sb.append("          </execution>\n");
+        sb.append("        </executions>\n");
         sb.append("      </plugin>\n");
         sb.append("    </plugins>\n");
         sb.append("  </build>\n");
@@ -136,21 +134,17 @@ public class SharedFlowGenerator {
         return sb.toString();
     }
 
+    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> safeList(Object o) {
-        if (o instanceof List) {
-            return (List<Map<String, Object>>) o;
-        }
+        if (o instanceof List) return (List<Map<String, Object>>) o;
         return new ArrayList<Map<String, Object>>();
     }
 
+    @SuppressWarnings("unchecked")
     private Map<String, Object> safeMap(Object o) {
-        if (o instanceof Map) {
-            return (Map<String, Object>) o;
-        }
+        if (o instanceof Map) return (Map<String, Object>) o;
         return new HashMap<String, Object>();
     }
 
-    private String value(Object o) {
-        return o == null ? null : String.valueOf(o);
-    }
+    private String value(Object o) { return o == null ? null : String.valueOf(o); }
 }

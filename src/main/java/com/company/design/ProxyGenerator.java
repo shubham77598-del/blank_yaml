@@ -29,19 +29,21 @@ public class ProxyGenerator {
         Files.createDirectories(targetsPath);
 
         List<Map<String, Object>> policies = asList(proxyConfig.get("policies"));
-
-        for (int i = 0; i < policies.size(); i++) {
-            Map<String, Object> p = policies.get(i);
+        for (Map<String, Object> p : policies) {
             String pName = str(p.get("name"));
             if (pName == null) continue;
             String pType = str(p.get("type"));
             Map<String, Object> cfg = asMap(p.get("configuration"));
-            Files.write(policiesPath.resolve(pName + ".xml"), renderPolicy(pName, pType, cfg).getBytes("UTF-8"));
+            Files.write(policiesPath.resolve(pName + ".xml"),
+                    renderPolicy(pName, pType, cfg).getBytes("UTF-8"));
         }
 
-        Files.write(proxiesPath.resolve("default.xml"), renderProxyEndpoint(name, proxyConfig).getBytes("UTF-8"));
-        Files.write(targetsPath.resolve("default.xml"), renderTargetEndpoint(proxyConfig).getBytes("UTF-8"));
-        Files.write(apiproxy.resolve(name + ".xml"), renderProxyDescriptor(name, proxyConfig).getBytes("UTF-8"));
+        Files.write(proxiesPath.resolve("default.xml"),
+                renderProxyEndpoint(name, proxyConfig).getBytes("UTF-8"));
+        Files.write(targetsPath.resolve("default.xml"),
+                renderTargetEndpoint(proxyConfig).getBytes("UTF-8"));
+        Files.write(apiproxy.resolve(name + ".xml"),
+                renderProxyDescriptor(name, proxyConfig).getBytes("UTF-8"));
 
         String pom = buildPom(designName, name);
         Files.write(Paths.get(dir, "pom.xml"), pom.getBytes("UTF-8"));
@@ -88,8 +90,7 @@ public class ProxyGenerator {
             sb.append("    <Condition>").append(condition).append("</Condition>\n");
             sb.append("    <Request>\n");
             List<Map<String, Object>> rq = asList(f.get("request"));
-            for (int j = 0; j < rq.size(); j++) {
-                Map<String, Object> step = rq.get(j);
+            for (Map<String, Object> step : rq) {
                 String policyRef = str(step.get("policy"));
                 if (policyRef != null) {
                     sb.append("      <Step><Name>").append(policyRef).append("</Name></Step>\n");
@@ -132,11 +133,10 @@ public class ProxyGenerator {
             sb.append("  <Description>").append(desc).append("</Description>\n");
         }
         Map<String, Object> dependsOn = asMap(proxyConfig.get("dependsOn"));
-        List<String> sharedRefs = dependsOn.containsKey("sharedFlows")
-                ? listOfStrings(dependsOn.get("sharedFlows"))
-                : new ArrayList<String>();
-        for (int i = 0; i < sharedRefs.size(); i++) {
-            sb.append("  <DependsOn>sf:").append(sharedRefs.get(i)).append("</DependsOn>\n");
+        if (dependsOn.containsKey("sharedFlows")) {
+            for (String sf : listOfStrings(dependsOn.get("sharedFlows"))) {
+                sb.append("  <DependsOn>sf:").append(sf).append("</DependsOn>\n");
+            }
         }
         sb.append("  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>\n");
         sb.append("  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>\n");
@@ -158,25 +158,15 @@ public class ProxyGenerator {
         sb.append("  <groupId>").append(group).append("</groupId>\n");
         sb.append("  <artifactId>").append(name).append("</artifactId>\n");
         sb.append("  <version>1.0</version>\n");
-        sb.append("  <packaging>pom</packaging>\n");
+        sb.append("  <packaging>apiproxy</packaging>\n"); // IMPORTANT
+        sb.append("  <name>").append(name).append("</name>\n");
         sb.append("  <build>\n");
         sb.append("    <plugins>\n");
         sb.append("      <plugin>\n");
         sb.append("        <groupId>io.apigee.build-tools.enterprise4g</groupId>\n");
         sb.append("        <artifactId>apigee-edge-maven-plugin</artifactId>\n");
         sb.append("        <version>1.2.1</version>\n");
-        sb.append("        <executions>\n");
-        sb.append("          <execution>\n");
-        sb.append("            <id>configure</id>\n");
-        sb.append("            <phase>package</phase>\n");
-        sb.append("            <goals><goal>configure</goal></goals>\n");
-        sb.append("          </execution>\n");
-        sb.append("          <execution>\n");
-        sb.append("            <id>deploy</id>\n");
-        sb.append("            <phase>install</phase>\n");
-        sb.append("            <goals><goal>deploy</goal></goals>\n");
-        sb.append("          </execution>\n");
-        sb.append("        </executions>\n");
+        sb.append("        <extensions>true</extensions>\n");
         sb.append("        <configuration>\n");
         sb.append("          <org>${apigee.org}</org>\n");
         sb.append("          <env>${apigee.env}</env>\n");
@@ -185,6 +175,16 @@ public class ProxyGenerator {
         sb.append("          <override>true</override>\n");
         sb.append("          <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>\n");
         sb.append("        </configuration>\n");
+        sb.append("        <executions>\n");
+        sb.append("          <execution>\n");
+        sb.append("            <id>deploy-proxy</id>\n");
+        sb.append("            <phase>install</phase>\n");
+        sb.append("            <goals>\n");
+        sb.append("              <goal>configure</goal>\n");
+        sb.append("              <goal>deploy</goal>\n");
+        sb.append("            </goals>\n");
+        sb.append("          </execution>\n");
+        sb.append("        </executions>\n");
         sb.append("      </plugin>\n");
         sb.append("    </plugins>\n");
         sb.append("  </build>\n");
@@ -192,33 +192,28 @@ public class ProxyGenerator {
         return sb.toString();
     }
 
+    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> asList(Object o) {
-        if (o instanceof List) {
-            return (List<Map<String, Object>>) o;
-        }
+        if (o instanceof List) return (List<Map<String, Object>>) o;
         return new ArrayList<Map<String, Object>>();
     }
 
+    @SuppressWarnings("unchecked")
     private Map<String, Object> asMap(Object o) {
-        if (o instanceof Map) {
-            return (Map<String, Object>) o;
-        }
+        if (o instanceof Map) return (Map<String, Object>) o;
         return new HashMap<String, Object>();
     }
 
     private List<String> listOfStrings(Object o) {
-        List<String> result = new ArrayList<String>();
+        List<String> out = new ArrayList<String>();
         if (o instanceof List) {
             List raw = (List) o;
-            for (int i = 0; i < raw.size(); i++) {
-                Object item = raw.get(i);
-                if (item != null) result.add(String.valueOf(item));
+            for (Object item : raw) {
+                if (item != null) out.add(String.valueOf(item));
             }
         }
-        return result;
+        return out;
     }
 
-    private String str(Object o) {
-        return o == null ? null : String.valueOf(o);
-    }
+    private String str(Object o) { return o == null ? null : String.valueOf(o); }
 }

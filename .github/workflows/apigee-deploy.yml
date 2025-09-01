@@ -28,13 +28,14 @@ jobs:
           mvn -q -DskipTests compile exec:java -Dexec.mainClass="com.company.design.DesignParser"
           echo "Generated:"
           find generated -type f -maxdepth 6 -name "*.xml" -o -name "*.json" || true
+      # Only showing the deployment loops part that changes
       - name: Deploy Shared Flows
         run: |
           if [ -d generated/sharedflows ]; then
             for d in generated/sharedflows/*; do
               [ -d "$d" ] || continue
-              echo "::group::SF $(basename "$d")"
-              (cd "$d" && mvn -q -DskipTests install \
+              echo "::group::SharedFlow $(basename "$d")"
+              (cd "$d" && mvn -q -DskipTests clean install \
                  -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
                  -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
                  -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
@@ -49,7 +50,7 @@ jobs:
             for d in generated/proxies/*; do
               [ -d "$d" ] || continue
               echo "::group::Proxy $(basename "$d")"
-              (cd "$d" && mvn -q -DskipTests install \
+              (cd "$d" && mvn -q -DskipTests clean install \
                  -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
                  -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
                  -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
