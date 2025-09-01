@@ -1,0 +1,119 @@
+name: Apigee X Automation
+
+on:
+  push:
+    paths:
+      - 'designs/*.yaml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint YAML
+        run: yamllint designs/
+
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v3
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: Build and Run Java Parser
+        run: mvn compile exec:java -Dexec.mainClass="com.example.DesignParser"
+
+      - name: Commit generated bundles
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add apiproxies/ sharedflows/
+          git commit -m "Auto-generated Apigee bundles from YAMLs" || echo "No changes to commit"
+          git push || echo "No changes to push"
+
+      # Set up Google Cloud SDK and authenticate with service account
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          version: '414.0.0'
+          install_components: 'beta'
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: '${{ secrets.APIGEE_SA_KEY }}'
+
+      # Get service account token for Apigee X
+      - name: Get access token
+        id: get-token
+        run: |
+          TOKEN=$(gcloud auth print-access-token)
+          echo "APIGEE_TOKEN=${TOKEN}" >> $GITHUB_ENV
+          echo "APIGEE_ORG=${{ secrets.APIGEE_ORG }}" >> $GITHUB_ENV
+          echo "APIGEE_ENV=${{ secrets.APIGEE_ENV }}" >> $GITHUB_ENV
+
+      # Deploy shared flows first (following your requirement)
+      - name: Deploy Shared Flows to Apigee X
+        run: |
+          cd sharedflows
+          echo "Deploying shared flows to Apigee X..."
+          
+          for sf in */; do
+            if [ -d "$sf" ]; then
+              SF_NAME=${sf%/}
+              echo "Deploying shared flow: $SF_NAME"
+              
+              # Import the shared flow bundle
+              IMPORT_RESULT=$(curl -s -X POST \
+                -H "Authorization: Bearer ${{ env.APIGEE_TOKEN }}" \
+                -H "Content-Type: multipart/form-data" \
+                -F "file=@$SF_NAME/$SF_NAME.zip" \
+                "https://apigee.googleapis.com/v1/organizations/${{ env.APIGEE_ORG }}/sharedflows?name=$SF_NAME&action=import")
+              
+              # Extract the revision number
+              REVISION=$(echo $IMPORT_RESULT | jq -r '.revision')
+              
+              # Deploy the shared flow revision
+              curl -s -X POST \
+                -H "Authorization: Bearer ${{ env.APIGEE_TOKEN }}" \
+                "https://apigee.googleapis.com/v1/organizations/${{ env.APIGEE_ORG }}/environments/${{ env.APIGEE_ENV }}/sharedflows/$SF_NAME/revisions/$REVISION/deployments"
+              
+              echo "Shared flow $SF_NAME deployed successfully"
+            fi
+          done
+
+      # Then deploy proxies (after shared flows)
+      - name: Deploy Proxies to Apigee X
+        run: |
+          cd apiproxies
+          echo "Deploying proxies to Apigee X..."
+          
+          for proxy in */; do
+            if [ -d "$proxy" ]; then
+              PROXY_NAME=${proxy%/}
+              echo "Deploying proxy: $PROXY_NAME"
+              
+              # Import the proxy bundle
+              IMPORT_RESULT=$(curl -s -X POST \
+                -H "Authorization: Bearer ${{ env.APIGEE_TOKEN }}" \
+                -H "Content-Type: multipart/form-data" \
+                -F "file=@$PROXY_NAME/$PROXY_NAME.zip" \
+                "https://apigee.googleapis.com/v1/organizations/${{ env.APIGEE_ORG }}/apis?name=$PROXY_NAME&action=import")
+              
+              # Extract the revision number
+              REVISION=$(echo $IMPORT_RESULT | jq -r '.revision')
+              
+              # Deploy the proxy revision
+              curl -s -X POST \
+                -H "Authorization: Bearer ${{ env.APIGEE_TOKEN }}" \
+                "https://apigee.googleapis.com/v1/organizations/${{ env.APIGEE_ORG }}/environments/${{ env.APIGEE_ENV }}/apis/$PROXY_NAME/revisions/$REVISION/deployments"
+              
+              echo "Proxy $PROXY_NAME deployed successfully"
+            fi
+          done

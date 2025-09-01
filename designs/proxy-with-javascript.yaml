@@ -1,0 +1,49 @@
+---
+proxies:
+  - name: transform-api
+    basePath: /v1/transform
+    description: API with JavaScript transformation
+    policies:
+      - name: transform-request
+        type: JavaScript
+        displayName: Transform Request
+        configuration:
+          timeoutInMillis: 200
+          scriptFile: transform.js
+          scriptContent: |
+            // This JavaScript transforms the request
+            var request = context.getVariable('request');
+            var payload = JSON.parse(request.content);
+            
+            // Add timestamp
+            payload.timestamp = new Date().toISOString();
+            
+            // Transform field names to uppercase
+            var transformed = {};
+            Object.keys(payload).forEach(function(key) {
+              transformed[key.toUpperCase()] = payload[key];
+            });
+            
+            // Set the transformed request
+            context.setVariable('request.content', JSON.stringify(transformed));
+      
+      - name: verify-api-key
+        type: VerifyAPIKey
+        displayName: Verify API Key
+        configuration:
+          apiKey: request.queryparam.apikey
+    
+    endpoints:
+      - name: default
+        type: proxy
+        basePath: /v1/transform
+        flows:
+          - name: transform-flow
+            condition: request.verb == "POST"
+            request:
+              - policy: verify-api-key
+              - policy: transform-request
+    
+    targetEndpoints:
+      - name: default
+        url: https://api.example.com/backend

@@ -1,0 +1,51 @@
+---
+sharedFlows:
+  - name: security-flow
+    description: Common security checks
+    policies:
+      - name: oauth-validation
+        type: OAuthV2
+        displayName: Validate OAuth Token
+        configuration:
+          keyValueMapName: oauth-config
+          scopes:
+            - read
+            - write
+      - name: threat-protection
+        type: JSONThreatProtection
+        displayName: JSON Threat Protection
+        configuration:
+          maxStringLength: 500
+          maxArraySize: 100
+    flows:
+      - name: default
+        request:
+          - policy: oauth-validation
+          - policy: threat-protection
+
+proxies:
+  - name: product-api
+    basePath: /v1/products
+    description: Product API with shared flow for security
+    dependencies:
+      - sharedFlow: security-flow
+    policies:
+      - name: product-quota
+        type: Quota
+        displayName: Product API Quota
+        configuration:
+          limit: 50
+          timeUnit: minute
+    endpoints:
+      - name: default
+        type: proxy
+        basePath: /v1/products
+        flows:
+          - name: product-flow
+            condition: true
+            request:
+              - sharedFlow: security-flow
+              - policy: product-quota
+    targetEndpoints:
+      - name: default
+        url: https://api.example.com/products
