@@ -1,6 +1,6 @@
 # Apigee Design Driven Deployment
 
-This repository demonstrates **single YAML design → generated Apigee X artifacts → automated deploy**.
+This repository demonstrates **single YAML design → generated Apigee X artifacts → automated deploy → API verification**.
 
 ## Flow
 
@@ -15,6 +15,22 @@ This repository demonstrates **single YAML design → generated Apigee X artifac
      1. Shared Flows (import + deploy)
      2. Proxies (import + deploy)
      3. Config (API Products via apigee-config-maven-plugin)
+   - **API Verification**: Tests deployed APIs to ensure they're actually working
+     - Makes HTTP requests to deployed endpoints
+     - Verifies responses and connectivity
+     - Fails the build if APIs don't respond correctly
+
+## API Verification Process
+
+After deployment, the system automatically:
+- Discovers all deployed API proxies from the generated configurations
+- Extracts their base paths and endpoint URLs
+- Makes HTTP requests to verify each API is responding
+- Handles authentication errors appropriately (401/403 are expected for secured endpoints)
+- Provides detailed logging and retry logic
+- **Fails the entire deployment if any API is not responding**
+
+This ensures that the deployment isn't just passing with placeholder configurations, but that real, functional APIs are actually deployed and accessible.
 
 ## Key Plugins
 
@@ -65,6 +81,35 @@ apigee:
       environments: [ eval ]
 ```
 
+## Local Testing
+
+**Quick validation** (without Apigee deployment):
+```bash
+./scripts/test-local.sh
+```
+
+This validates:
+- YAML design file syntax
+- Generation process  
+- Maven configuration correctness
+- Generated artifact structure
+
+**Full API verification** (requires deployed APIs):
+```bash
+# Set environment variables
+export APIGEE_ORG=your-org
+export APIGEE_ENV=eval
+
+# Run API verification
+./scripts/test-deployed-apis.sh
+```
+
+The API verification script will:
+- Automatically discover deployed APIs
+- Extract endpoint URLs from configurations  
+- Test each API endpoint with retries
+- Report success/failure status
+
 ## Local Usage
 
 ```powershell
@@ -94,6 +139,23 @@ If you want environment-driven tokens (e.g. `${APIGEE_ENV}` inside the YAML) add
 
 The legacy `io.apigee.build-tools.enterprise4g` plugin has brittle behavior (NullPointerException with Apigee X SAs). This repo uses the modern Google Cloud Apigee plugin for a stable import/deploy lifecycle.
 
+## Troubleshooting API Deployment
+
+If the GitHub Actions workflow fails during the "Verify API Deployments" step:
+
+1. **Check deployment logs**: Review the Maven deployment logs for any errors
+2. **Verify credentials**: Ensure `APIGEE_SA_KEY_JSON`, `APIGEE_ORG`, and `APIGEE_ENV` secrets are correctly configured
+3. **Network connectivity**: The verification script needs to access `{org}-{env}.apigee.net`
+4. **API accessibility**: Some APIs may require authentication (401/403 responses are considered successful)
+5. **Custom domains**: If using custom domains, set the `APIGEE_HOST` environment variable
+
+**Common Issues:**
+- **"Failed to connect"**: Usually indicates the API wasn't deployed or network issues
+- **"HTTP 404"**: API proxy exists but base path is incorrect
+- **"HTTP 500"**: API deployed but has runtime errors (check Apigee console logs)
+
+The verification ensures your APIs are **actually working**, not just deployed as placeholders.
+
 ## Future Enhancements
 
 - Validation for missing referenced policies
@@ -101,6 +163,10 @@ The legacy `io.apigee.build-tools.enterprise4g` plugin has brittle behavior (Nul
 - More config entity types (developers, apps)
 - Unit tests for YAML parsing
 - Property-driven versioning
+- ✅ **API endpoint verification after deployment** (COMPLETED)
+- Advanced API testing (response validation, performance testing)
+- Integration with API monitoring tools
+- Automated rollback on verification failures
 
 ## License
 

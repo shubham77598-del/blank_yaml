@@ -38,10 +38,12 @@ jobs:
             for d in generated/sharedflows/*; do
               [ -d "$d" ] || continue
               echo "::group::SharedFlow $(basename "$d")"
+              echo "Deploying shared flow: $(basename "$d")"
               (cd "$d" && mvn -q install \
                   -Dapigee.org=${APIGEE_ORG} \
                   -Dapigee.env=${APIGEE_ENV} \
                   -DserviceAccountFile=$GITHUB_WORKSPACE/sa.json)
+              echo "✅ SharedFlow $(basename "$d") deployed successfully"
               echo "::endgroup::"
             done
           else
@@ -54,10 +56,12 @@ jobs:
             for d in generated/proxies/*; do
               [ -d "$d" ] || continue
               echo "::group::Proxy $(basename "$d")"
+              echo "Deploying proxy: $(basename "$d")"
               (cd "$d" && mvn -q install \
                   -Dapigee.org=${APIGEE_ORG} \
                   -Dapigee.env=${APIGEE_ENV} \
                   -DserviceAccountFile=$GITHUB_WORKSPACE/sa.json)
+              echo "✅ Proxy $(basename "$d") deployed successfully"
               echo "::endgroup::"
             done
           else
@@ -68,11 +72,52 @@ jobs:
         run: |
           if [ -f generated/config/pom.xml ]; then
             echo "::group::Config"
+            echo "Deploying API Products and configuration..."
             (cd generated/config && mvn -q install \
                 -Dapigee.org=${APIGEE_ORG} \
                 -Dapigee.env=${APIGEE_ENV} \
                 -DserviceAccountFile=$GITHUB_WORKSPACE/sa.json)
+            echo "✅ Configuration deployed successfully"
             echo "::endgroup::"
           else
             echo "No config module."
           fi
+
+      - name: Verify API Deployments
+        run: |
+          echo "::group::API Verification"
+          ./scripts/test-deployed-apis.sh
+          echo "::endgroup::"
+        env:
+          APIGEE_ORG: ${{ secrets.APIGEE_ORG }}
+          APIGEE_ENV: ${{ secrets.APIGEE_ENV }}
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "🚀 Apigee Deployment Summary"
+          echo "================================"
+          echo "Organization: ${APIGEE_ORG}"
+          echo "Environment: ${APIGEE_ENV}"
+          echo "Generated artifacts:"
+          
+          if [ -d generated/sharedflows ]; then
+            echo "📁 Shared Flows:"
+            for d in generated/sharedflows/*; do
+              [ -d "$d" ] && echo "  - $(basename "$d")"
+            done
+          fi
+          
+          if [ -d generated/proxies ]; then
+            echo "📁 API Proxies:"
+            for d in generated/proxies/*; do
+              [ -d "$d" ] && echo "  - $(basename "$d")"
+            done
+          fi
+          
+          if [ -f generated/config/pom.xml ]; then
+            echo "📁 Configuration: API Products and config deployed"
+          fi
+          
+          echo "================================"
+          echo "✅ Deployment and verification completed successfully!"
