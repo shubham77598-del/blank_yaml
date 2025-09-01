@@ -1,160 +1,179 @@
-package com.example;
+package com.company.design;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
+import java.nio.file.*;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Generator class for Apigee API proxies.
- * Creates the bundle structure and related files based on the design YAML.
- */
 public class ProxyGenerator {
+
     private final String outputDir;
 
     public ProxyGenerator(String outputDir) {
         this.outputDir = outputDir;
     }
 
-    /**
-     * Generates an Apigee proxy bundle based on YAML configuration.
-     */
-    public void generateProxy(Map<String, Object> proxyConfig, String designName,
-                             List<Map<String, Object>> sharedFlows) throws IOException {
+    public void generateProxy(Map<String, Object> proxyConfig, String designName) throws IOException {
         String name = (String) proxyConfig.get("name");
-        if (name == null || name.isEmpty()) {
-            throw new IllegalArgumentException("Proxy must have a name");
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Proxy missing name");
         }
-        
         System.out.println("Generating proxy: " + name);
-        
-        // Create proxy directory structure
-        String proxyDir = outputDir + "/" + name;
-        Files.createDirectories(Paths.get(proxyDir));
-        
-        // Create standard Apigee proxy bundle structure
-        Path apiproxyPath = Paths.get(proxyDir, "apiproxy");
-        Files.createDirectories(apiproxyPath);
-        
-        // Create policies directory
-        Path policiesPath = Paths.get(apiproxyPath.toString(), "policies");
+
+        String dir = outputDir + "/" + name;
+        Path apiproxy = Paths.get(dir, "apiproxy");
+        Path policiesPath = apiproxy.resolve("policies");
+        Path proxiesPath = apiproxy.resolve("proxies");
+        Path targetsPath = apiproxy.resolve("targets");
+
         Files.createDirectories(policiesPath);
-        
-        // Create proxies directory (for ProxyEndpoint configuration)
-        Path proxiesPath = Paths.get(apiproxyPath.toString(), "proxies");
         Files.createDirectories(proxiesPath);
-        
-        // Create targets directory (for TargetEndpoint configuration)
-        Path targetsPath = Paths.get(apiproxyPath.toString(), "targets");
         Files.createDirectories(targetsPath);
-        
-        // Generate policies
-        if (proxyConfig.containsKey("policies")) {
-            List<Map<String, Object>> policies = (List<Map<String, Object>>) proxyConfig.get("policies");
-            generatePolicies(policiesPath, policies);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> policies =
+                (List<Map<String, Object>>) proxyConfig.getOrDefault("policies", List.of());
+        for (Map<String, Object> p : policies) {
+            String pName = (String) p.get("name");
+            String pType = (String) p.get("type");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> cfg = (Map<String, Object>) p.getOrDefault("configuration", Map.of());
+            Files.writeString(policiesPath.resolve(pName + ".xml"), renderPolicy(pName, pType, cfg));
         }
-        
-        // Generate proxy endpoint
-        generateProxyEndpoint(proxiesPath, name, proxyConfig);
-        
-        // Generate target endpoint
-        generateTargetEndpoint(targetsPath, name, proxyConfig);
-        
-        // Generate main proxy XML file
-        generateProxyXml(apiproxyPath, name, proxyConfig);
-        
-        // Generate POM file
-        generatePom(proxyDir, name, designName, proxyConfig, sharedFlows);
-        
-        System.out.println("Successfully generated proxy bundle: " + name);
+
+        Files.writeString(proxiesPath.resolve("default.xml"),
+                renderProxyEndpoint(name, proxyConfig));
+        Files.writeString(targetsPath.resolve("default.xml"),
+                renderTargetEndpoint(proxyConfig));
+        Files.writeString(apiproxy.resolve(name + ".xml"),
+                renderProxyDescriptor(name, proxyConfig));
+        Files.writeString(Paths.get(dir, "pom.xml"),
+                renderPom(designName, name));
+
+        System.out.println("Proxy bundle generated: " + name);
     }
 
-    // [Other methods remain unchanged]
-
-    /**
-     * Generates Maven POM file for the proxy.
-     */
-    private void generatePom(String proxyDir, String name, String designName, Map<String, Object> proxyConfig,
-                            List<Map<String, Object>> sharedFlows) throws IOException {
-        StringBuilder pom = new StringBuilder();
-        pom.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        pom.append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n");
-        pom.append("         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
-        pom.append("         xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n");
-        pom.append("    <modelVersion>4.0.0</modelVersion>\n\n");
-        
-        pom.append("    <groupId>com.apigee.edge.proxy.").append(designName).append("</groupId>\n");
-        pom.append("    <artifactId>").append(name).append("</artifactId>\n");
-        pom.append("    <version>1.0</version>\n");
-        pom.append("    <packaging>pom</packaging>\n\n");
-        
-        // Add dependencies for shared flows if specified
-        List<String> sharedFlowRefs = new ArrayList<>();
-        if (proxyConfig.containsKey("dependencies") && 
-            ((Map<String, Object>) proxyConfig.get("dependencies")).containsKey("sharedFlows")) {
-            
-            sharedFlowRefs = (List<String>) ((Map<String, Object>) proxyConfig.get("dependencies")).get("sharedFlows");
-            
-            if (!sharedFlowRefs.isEmpty()) {
-                pom.append("    <dependencies>\n");
-                
-                for (String sharedFlowRef : sharedFlowRefs) {
-                    // Find the matching shared flow from the list
-                    for (Map<String, Object> sharedFlow : sharedFlows) {
-                        String sharedFlowName = (String) sharedFlow.get("name");
-                        if (sharedFlowName.equals(sharedFlowRef)) {
-                            pom.append("        <dependency>\n");
-                            pom.append("            <groupId>com.apigee.edge.sharedflow.").append(designName).append("</groupId>\n");
-                            pom.append("            <artifactId>").append(sharedFlowName).append("</artifactId>\n");
-                            pom.append("            <version>1.0</version>\n");
-                            pom.append("        </dependency>\n");
-                            break;
-                        }
-                    }
-                }
-                
-                pom.append("    </dependencies>\n\n");
-            }
+    private String renderPolicy(String name, String type, Map<String, Object> cfg) {
+        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        switch (type) {
+            case "Quota" -> sb.append("<Quota name=\"").append(name).append("\">\n")
+                    .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+                    .append("  <Allow count=\"").append(cfg.getOrDefault("limit", 1000)).append("\"/>\n")
+                    .append("  <Interval>1</Interval>\n")
+                    .append("  <TimeUnit>").append(cfg.getOrDefault("timeUnit", "minute")).append("</TimeUnit>\n")
+                    .append("</Quota>\n");
+            default -> sb.append("<Policy name=\"").append(name).append("\">\n")
+                    .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+                    .append("</Policy>\n");
         }
-        
-        pom.append("    <properties>\n");
-        pom.append("        <apigee.org>${env.APIGEE_ORG}</apigee.org>\n");
-        pom.append("        <apigee.env>${env.APIGEE_ENV}</apigee.env>\n");
-        pom.append("        <apigee.config.options>update</apigee.config.options>\n");
-        pom.append("        <apigee.config.dir>${project.basedir}</apigee.config.dir>\n");
-        pom.append("    </properties>\n\n");
-        
-        // Add build configuration with apigee-edge-maven-plugin
-        pom.append("    <build>\n");
-        pom.append("        <plugins>\n");
-        pom.append("            <plugin>\n");
-        pom.append("                <groupId>io.apigee.build-tools.enterprise4g</groupId>\n");
-        pom.append("                <artifactId>apigee-edge-maven-plugin</artifactId>\n");
-        pom.append("                <version>1.2.1</version>\n");
-        pom.append("                <executions>\n");
-        pom.append("                    <execution>\n");
-        pom.append("                        <id>configure-bundle</id>\n");
-        pom.append("                        <phase>package</phase>\n");
-        pom.append("                        <goals>\n");
-        pom.append("                            <goal>configure</goal>\n");
-        pom.append("                        </goals>\n");
-        pom.append("                    </execution>\n");
-        pom.append("                    <execution>\n");
-        pom.append("                        <id>deploy-bundle</id>\n");
-        pom.append("                        <phase>install</phase>\n");
-        pom.append("                        <goals>\n");
-        pom.append("                            <goal>deploy</goal>\n");
-        pom.append("                        </goals>\n");
-        pom.append("                    </execution>\n");
-        pom.append("                </executions>\n");
-        pom.append("            </plugin>\n");
-        pom.append("        </plugins>\n");
-        pom.append("    </build>\n");
-        pom.append("</project>\n");
-        
-        // Write POM file
-        Path pomFile = Paths.get(proxyDir, "pom.xml");
-        Files.writeString(pomFile, pom.toString());
+        return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private String renderProxyEndpoint(String proxyName, Map<String, Object> proxyConfig) {
+        String basePath = (String) proxyConfig.getOrDefault("basePath", "/" + proxyName);
+        List<Map<String, Object>> flows = (List<Map<String, Object>>) proxyConfig.getOrDefault("flows", List.of());
+        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<ProxyEndpoint name=\"default\">\n")
+          .append("  <PreFlow name=\"PreFlow\"><Request/><Response/></PreFlow>\n");
+        for (Map<String, Object> f : flows) {
+            String fname = (String) f.getOrDefault("name", "default");
+            String condition = String.valueOf(f.getOrDefault("condition", "true"));
+            sb.append("  <Flow name=\"").append(fname).append("\">\n")
+              .append("    <Condition>").append(condition).append("</Condition>\n")
+              .append("    <Request>\n");
+            List<Map<String, Object>> rq = (List<Map<String, Object>>) f.getOrDefault("request", List.of());
+            for (Map<String, Object> step : rq) {
+                sb.append("      <Step><Name>").append(step.get("policy")).append("</Name></Step>\n");
+            }
+            sb.append("    </Request>\n")
+              .append("    <Response/>\n")
+              .append("  </Flow>\n");
+        }
+        sb.append("  <PostFlow name=\"PostFlow\"><Request/><Response/></PostFlow>\n")
+          .append("  <HTTPProxyConnection>\n")
+          .append("    <BasePath>").append(basePath).append("</BasePath>\n")
+          .append("  </HTTPProxyConnection>\n")
+          .append("  <RouteRule name=\"default\"><TargetEndpoint>default</TargetEndpoint></RouteRule>\n")
+          .append("</ProxyEndpoint>\n");
+        return sb.toString();
+    }
+
+    private String renderTargetEndpoint(Map<String, Object> proxyConfig) {
+        String target = (String) proxyConfig.getOrDefault("target", "https://mocktarget.apigee.net");
+        return """
+               <?xml version="1.0" encoding="UTF-8"?>
+               <TargetEndpoint name="default">
+                 <PreFlow name="PreFlow"><Request/><Response/></PreFlow>
+                 <PostFlow name="PostFlow"><Request/><Response/></PostFlow>
+                 <HTTPTargetConnection>
+                   <URL>%s</URL>
+                 </HTTPTargetConnection>
+               </TargetEndpoint>
+               """.formatted(target);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String renderProxyDescriptor(String name, Map<String, Object> proxyConfig) {
+        String desc = (String) proxyConfig.getOrDefault("description", "");
+        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<APIProxy name=\"").append(name).append("\" revision=\"1\">\n");
+        if (!desc.isBlank()) {
+            sb.append("  <Description>").append(desc).append("</Description>\n");
+        }
+        // Dependencies (shared flows)
+        Map<String, Object> dependsOn = (Map<String, Object>) proxyConfig.getOrDefault("dependsOn", Map.of());
+        List<String> sfs = (List<String>) dependsOn.getOrDefault("sharedFlows", List.of());
+        for (String sf : sfs) {
+            sb.append("  <DependsOn>sf:").append(sf).append("</DependsOn>\n");
+        }
+        sb.append("  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>\n")
+          .append("  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>\n")
+          .append("</APIProxy>\n");
+        return sb.toString();
+    }
+
+    private String renderPom(String designName, String name) {
+        return """
+               <?xml version="1.0" encoding="UTF-8"?>
+               <project xmlns="http://maven.apache.org/POM/4.0.0"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+                 <modelVersion>4.0.0</modelVersion>
+                 <groupId>com.apigee.edge.proxy.%s</groupId>
+                 <artifactId>%s</artifactId>
+                 <version>1.0</version>
+                 <packaging>pom</packaging>
+                 <build>
+                   <plugins>
+                     <plugin>
+                       <groupId>io.apigee.build-tools.enterprise4g</groupId>
+                       <artifactId>apigee-edge-maven-plugin</artifactId>
+                       <version>1.2.1</version>
+                       <executions>
+                         <execution>
+                           <id>configure</id>
+                           <phase>package</phase>
+                           <goals><goal>configure</goal></goals>
+                         </execution>
+                         <execution>
+                           <id>deploy</id>
+                           <phase>install</phase>
+                           <goals><goal>deploy</goal></goals>
+                         </execution>
+                       </executions>
+                       <configuration>
+                         <org>${env.APIGEE_ORG}</org>
+                         <env>${env.APIGEE_ENV}</env>
+                         <bundleType>apiproxy</bundleType>
+                         <cleanDeployment>true</cleanDeployment>
+                         <override>true</override>
+                         <serviceAccountFile>${env.APIGEE_SA_KEY_FILE}</serviceAccountFile>
+                       </configuration>
+                     </plugin>
+                   </plugins>
+                 </build>
+               </project>
+               """.formatted(designName, name);
     }
 }

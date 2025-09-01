@@ -1,4 +1,4 @@
-package com.example;
+package com.company.design;
 
 import org.yaml.snakeyaml.Yaml;
 
@@ -10,7 +10,7 @@ import java.nio.file.Paths;
 import java.util.*;
 
 /**
- * Reads every *.yml / *.yaml in designs/ and generates bundles into generated/.
+ * Parses YAML design files under designs/ and generates Apigee bundles + config.
  */
 public class DesignParser {
 
@@ -18,19 +18,27 @@ public class DesignParser {
     private static final String OUT_BASE = "generated";
     private static final String OUT_SHARED = OUT_BASE + "/sharedflows";
     private static final String OUT_PROXIES = OUT_BASE + "/proxies";
+    private static final String OUT_CONFIG = OUT_BASE + "/config";
 
     public static void main(String[] args) throws Exception {
-        Files.createDirectories(Paths.get(OUT_SHARED));
-        Files.createDirectories(Paths.get(OUT_PROXIES));
+        ensureDirs();
         List<File> yamlFiles = discoverDesignFiles();
         if (yamlFiles.isEmpty()) {
-            System.out.println("No design files found in " + DESIGNS_DIR);
+            System.out.println("No design files found.");
             return;
         }
         for (File f : yamlFiles) {
             processDesignFile(f);
         }
-        System.out.println("Design processing complete.");
+        // After generating flows/proxies, generate config module if needed
+        ConfigGenerator.finalizeConfigModule(OUT_CONFIG);
+        System.out.println("All designs processed.");
+    }
+
+    private static void ensureDirs() throws Exception {
+        Files.createDirectories(Paths.get(OUT_SHARED));
+        Files.createDirectories(Paths.get(OUT_PROXIES));
+        Files.createDirectories(Paths.get(OUT_CONFIG));
     }
 
     private static List<File> discoverDesignFiles() {
@@ -43,22 +51,25 @@ public class DesignParser {
 
     @SuppressWarnings("unchecked")
     private static void processDesignFile(File file) throws Exception {
-        System.out.println("Parsing design file: " + file.getName());
+        System.out.println("Processing design: " + file.getName());
         Yaml yaml = new Yaml();
         Map<String, Object> root;
         try (FileInputStream in = new FileInputStream(file)) {
             root = yaml.load(in);
         }
         if (root == null || !root.containsKey("apigee")) {
-            System.out.println("Skipping: no 'apigee' root section.");
+            System.out.println("Skipping file (missing apigee root): " + file.getName());
             return;
         }
         Map<String, Object> apigee = (Map<String, Object>) root.get("apigee");
         String designName = (String) apigee.getOrDefault("name", stripExt(file.getName()));
+
         List<Map<String, Object>> sharedFlows =
                 (List<Map<String, Object>>) apigee.getOrDefault("sharedFlows", List.of());
         List<Map<String, Object>> proxies =
                 (List<Map<String, Object>>) apigee.getOrDefault("proxies", List.of());
+        List<Map<String, Object>> apiProducts =
+                (List<Map<String, Object>>) apigee.getOrDefault("apiProducts", List.of());
 
         SharedFlowGenerator sfg = new SharedFlowGenerator(OUT_SHARED);
         for (Map<String, Object> sf : sharedFlows) {
@@ -67,12 +78,17 @@ public class DesignParser {
 
         ProxyGenerator pg = new ProxyGenerator(OUT_PROXIES);
         for (Map<String, Object> px : proxies) {
-            pg.generateProxy(px, designName, sharedFlows);
+            pg.generateProxy(px, designName);
+        }
+
+        // Config entities
+        if (!apiProducts.isEmpty()) {
+            ConfigGenerator.generateApiProducts(apiProducts, OUT_CONFIG + "/entities/apiproducts");
         }
     }
 
     private static String stripExt(String name) {
-        int i = name.lastIndexOf('.');
-        return (i == -1) ? name : name.substring(0, i);
+        int idx = name.lastIndexOf('.');
+        return (idx == -1) ? name : name.substring(0, idx);
     }
 }

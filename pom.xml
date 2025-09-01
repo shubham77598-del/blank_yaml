@@ -2,107 +2,38 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example</groupId>
-    <artifactId>yaml2proxy-generator</artifactId>
-    <version>1.0-SNAPSHOT</version>
-    <packaging>jar</packaging>
+  <groupId>com.company</groupId>
+  <artifactId>apigee-design-generator</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
 
-    <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
-        <snakeyaml.version>1.30</snakeyaml.version>
-        <apigee.plugin.version>2.3.0</apigee.plugin.version>
-        <maven.deploy.plugin.version>3.0.0</maven.deploy.plugin.version>
-    </properties>
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <snakeyaml.version>2.2</snakeyaml.version>
+  </properties>
 
-    <dependencies>
-        <!-- YAML Parser -->
-        <dependency>
-            <groupId>org.yaml</groupId>
-            <artifactId>snakeyaml</artifactId>
-            <version>${snakeyaml.version}</version>
-        </dependency>
-        
-        <!-- Apache Commons -->
-        <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>2.11.0</version>
-        </dependency>
-        
-        <!-- Google GSON for JSON handling -->
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.9.0</version>
-        </dependency>
-        
-        <!-- JUnit for testing -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>5.8.2</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+  <dependencies>
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+      <version>${snakeyaml.version}</version>
+    </dependency>
+  </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.10.1</version>
-                <configuration>
-                    <source>${maven.compiler.source}</source>
-                    <target>${maven.compiler.target}</target>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.0.0</version>
-                <configuration>
-                    <mainClass>com.example.DesignParser</mainClass>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-
-    <profiles>
-        <profile>
-            <id>deploy-bundle</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>com.apigee.edge.config</groupId>
-                        <artifactId>apigee-config-maven-plugin</artifactId>
-                        <version>${apigee.plugin.version}</version>
-                        <executions>
-                            <execution>
-                                <id>deploy-bundle</id>
-                                <phase>install</phase>
-                                <goals>
-                                    <goal>caches</goal>
-                                    <goal>keyvaluemaps</goal>
-                                    <goal>apiproducts</goal>
-                                    <goal>developers</goal>
-                                    <goal>apps</goal>
-                                    <goal>sharedflows</goal>
-                                    <goal>proxies</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <options>
-                                <option>update</option>
-                            </options>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <configuration>
+          <mainClass>com.company.design.DesignParser</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

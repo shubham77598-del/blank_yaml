@@ -1,0 +1,47 @@
+apigee:
+  name: sample-design
+  version: "1.0"
+
+  sharedFlows:
+    - name: common-security
+      description: "Security shared flow"
+      policies:
+        - name: Verify-API-Key
+          type: VerifyAPIKey
+          configuration:
+            keyLocation: request.header.x-api-key
+
+  proxies:
+    - name: sample-api
+      description: "Sample API Proxy"
+      basePath: /v1/sample
+      target: https://mocktarget.apigee.net
+      dependsOn:
+        sharedFlows: [common-security]
+      policies:
+        - name: Quota
+          type: Quota
+          configuration:
+            limit: 500
+            timeUnit: minute
+      flows:
+        - name: default
+          condition: true
+          request:
+            - policy: Verify-API-Key
+            - policy: Quota
+
+  apiProducts:
+    - name: Sample-Product
+      displayName: "Sample Product"
+      approvalType: AUTO
+      proxies:
+        - sample-api
+      environments:
+        - ${APIGEE_ENV}
+      quota:
+        limit: 1000
+        interval: 1
+        timeUnit: minute
+      attributes:
+        access: public
