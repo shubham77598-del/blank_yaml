@@ -12,13 +12,13 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up JDK 11
       uses: actions/setup-java@v3
       with:
         java-version: '11'
-        distribution: 'adopt'
+        distribution: 'temurin'
         cache: maven
 
     - name: Set up Google Cloud SDK
@@ -43,37 +43,53 @@ jobs:
         cd target/sharedflows
         if [ -d "*" ]; then
           for d in */; do
-            cd "$d"
-            echo "Deploying shared flow: $(basename "$d")"
-            mvn clean install -Papigee-deploy \
-              -Dapigee.org=${{ secrets.APIGEE_ORG }} \
-              -Dapigee.env=${{ secrets.APIGEE_ENV }} \
-              -Dbearer=${{ steps.auth.outputs.token }}
-            cd ..
+            if [ -d "$d" ]; then
+              cd "$d"
+              echo "Deploying shared flow: $(basename "$d")"
+              mvn clean install -Papigee-deploy \
+                -Dapigee.org=${{ secrets.APIGEE_ORG }} \
+                -Dapigee.env=${{ secrets.APIGEE_ENV }} \
+                -Dbearer=${{ steps.auth.outputs.token }}
+              RESULT=$?
+              if [ $RESULT -ne 0 ]; then
+                echo "Shared flow deployment failed, exiting"
+                exit $RESULT
+              fi
+              cd ..
+            fi
           done
         else
           echo "No shared flows to deploy"
         fi
       
     - name: Deploy API Proxies
+      if: success()
       run: |
         cd target/proxies
         if [ -d "*" ]; then
           for d in */; do
-            cd "$d"
-            echo "Deploying proxy: $(basename "$d")"
-            mvn clean install -Papigee-deploy \
-              -Dapigee.org=${{ secrets.APIGEE_ORG }} \
-              -Dapigee.env=${{ secrets.APIGEE_ENV }} \
-              -Dbearer=${{ steps.auth.outputs.token }}
-            cd ..
+            if [ -d "$d" ]; then
+              cd "$d"
+              echo "Deploying proxy: $(basename "$d")"
+              mvn clean install -Papigee-deploy \
+                -Dapigee.org=${{ secrets.APIGEE_ORG }} \
+                -Dapigee.env=${{ secrets.APIGEE_ENV }} \
+                -Dbearer=${{ steps.auth.outputs.token }}
+              RESULT=$?
+              if [ $RESULT -ne 0 ]; then
+                echo "Proxy deployment failed"
+                exit $RESULT
+              fi
+              cd ..
+            fi
           done
         else
           echo "No proxies to deploy"
         fi
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      if: success() || failure()
+      uses: actions/upload-artifact@v4
       with:
         name: apigee-bundles
         path: target/
