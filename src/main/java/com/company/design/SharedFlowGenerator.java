@@ -76,6 +76,7 @@ public class SharedFlowGenerator {
     }
 
     private String renderPom(String designName, String name) {
+        // IMPORTANT: Use maven properties (${apigee.org}, ${apigee.env}, ${serviceAccountFile}) passed via -D
         return """
                <?xml version="1.0" encoding="UTF-8"?>
                <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -105,12 +106,12 @@ public class SharedFlowGenerator {
                          </execution>
                        </executions>
                        <configuration>
-                         <org>${env.APIGEE_ORG}</org>
-                         <env>${env.APIGEE_ENV}</env>
+                         <org>${apigee.org}</org>
+                         <env>${apigee.env}</env>
                          <bundleType>sharedflow</bundleType>
                          <cleanDeployment>true</cleanDeployment>
                          <override>true</override>
-                         <serviceAccountFile>${env.APIGEE_SA_KEY_FILE}</serviceAccountFile>
+                         <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>
                        </configuration>
                      </plugin>
                    </plugins>

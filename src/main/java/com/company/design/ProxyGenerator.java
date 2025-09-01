@@ -121,7 +121,6 @@ public class ProxyGenerator {
         if (!desc.isBlank()) {
             sb.append("  <Description>").append(desc).append("</Description>\n");
         }
-        // Dependencies (shared flows)
         Map<String, Object> dependsOn = (Map<String, Object>) proxyConfig.getOrDefault("dependsOn", Map.of());
         List<String> sfs = (List<String>) dependsOn.getOrDefault("sharedFlows", List.of());
         for (String sf : sfs) {
@@ -163,12 +162,12 @@ public class ProxyGenerator {
                          </execution>
                        </executions>
                        <configuration>
-                         <org>${env.APIGEE_ORG}</org>
-                         <env>${env.APIGEE_ENV}</env>
+                         <org>${apigee.org}</org>
+                         <env>${apigee.env}</env>
                          <bundleType>apiproxy</bundleType>
                          <cleanDeployment>true</cleanDeployment>
                          <override>true</override>
-                         <serviceAccountFile>${env.APIGEE_SA_KEY_FILE}</serviceAccountFile>
+                         <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>
                        </configuration>
                      </plugin>
                    </plugins>

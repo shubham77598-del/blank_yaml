@@ -11,6 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: apigee
 
+    env:
+      # Expose secrets as simple env vars (not strictly required if using only -D, but useful)
+      APIGEE_ORG: ${{ secrets.APIGEE_ORG }}
+      APIGEE_ENV: ${{ secrets.APIGEE_ENV }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,8 +29,8 @@ jobs:
 
       - name: Write Service Account Key
         run: |
-          echo "${{ secrets.APIGEE_SA_KEY }}" > sa.json
-          echo "APIGEE_SA_KEY_FILE=$PWD/sa.json" >> $GITHUB_ENV
+            echo "${{ secrets.APIGEE_SA_KEY }}" > sa.json
+            echo "APIGEE_SA_KEY_FILE=$PWD/sa.json" >> $GITHUB_ENV
 
       - name: Run Design Generator
         run: |
@@ -35,11 +40,15 @@ jobs:
 
       - name: Deploy Shared Flows
         run: |
+          set -e
           if [ -d generated/sharedflows ]; then
             for sf in generated/sharedflows/* ; do
               [ -d "$sf" ] || continue
               echo "::group::Deploy Shared Flow $(basename "$sf")"
-              (cd "$sf" && mvn -q -DskipTests install)
+              (cd "$sf" && mvn -q -DskipTests install \
+                -Dapigee.org="$APIGEE_ORG" \
+                -Dapigee.env="$APIGEE_ENV" \
+                -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
               echo "::endgroup::"
             done
           else
@@ -48,38 +57,19 @@ jobs:
 
       - name: Deploy Proxies
         run: |
+          set -e
           if [ -d generated/proxies ]; then
             for px in generated/proxies/* ; do
               [ -d "$px" ] || continue
               echo "::group::Deploy Proxy $(basename "$px")"
-              (cd "$px" && mvn -q -DskipTests install)
+              (cd "$px" && mvn -q -DskipTests install \
+                -Dapigee.org="$APIGEE_ORG" \
+                -Dapigee.env="$APIGEE_ENV" \
+                -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
               echo "::endgroup::"
             done
           else
             echo "No proxies generated"
-          fi
-
-      - name: Deploy Config (API Products etc.)
-        run: |
-          if [ -f generated/config/pom.xml ]; then
-            echo "::group::Deploy Config Entities"
-            mvn -q -DskipTests -f generated/config/pom.xml install
-            echo "::endgroup::"
-          else
-            echo "No config module to deploy"
-          fi
-
-      - name: Commit Generated (Optional)
-        if: success()
-        run: |
-          if ! git diff --quiet --exit-code generated; then
-            git config user.name "apigee-automation"
-            git config user.email "apigee-automation@users.noreply.github.com"
-            git add generated
-            git commit -m "chore: update generated bundles from design automation"
-            git push || echo "Push skipped (race condition)."
-          else
-            echo "No changes in generated/ to commit."
           fi
 
       - name: Upload Generated Artifacts
