@@ -32,42 +32,6 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Configure Maven settings
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << EOF
-          <settings>
-            <profiles>
-              <profile>
-                <id>apigee</id>
-                <repositories>
-                  <repository>
-                    <id>central</id>
-                    <url>https://repo.maven.apache.org/maven2</url>
-                  </repository>
-                  <repository>
-                    <id>apigee-releases</id>
-                    <url>https://repository.sonatype.org/content/repositories/central</url>
-                  </repository>
-                </repositories>
-                <pluginRepositories>
-                  <pluginRepository>
-                    <id>central</id>
-                    <url>https://repo.maven.apache.org/maven2</url>
-                  </pluginRepository>
-                  <pluginRepository>
-                    <id>apigee-releases</id>
-                    <url>https://repository.sonatype.org/content/repositories/central</url>
-                  </pluginRepository>
-                </pluginRepositories>
-              </profile>
-            </profiles>
-            <activeProfiles>
-              <activeProfile>apigee</activeProfile>
-            </activeProfiles>
-          </settings>
-          EOF
-
       - name: Authenticate to Google Cloud
         id: auth
         uses: 'google-github-actions/auth@v2'
@@ -83,78 +47,127 @@ jobs:
           echo "APIGEE_ORG=${{ secrets.APIGEE_ORG }}" >> $GITHUB_ENV
           echo "APIGEE_ENV=${{ secrets.APIGEE_ENV }}" >> $GITHUB_ENV
 
-      - name: Debug Maven Settings
-        run: |
-          echo "Maven will use the following settings:"
-          echo "APIGEE_ORG: $APIGEE_ORG"
-          echo "APIGEE_ENV: $APIGEE_ENV"
-          echo "Access token is available: ${{ env.APIGEE_TOKEN != '' }}"
-          
-      - name: Create Java source directories if needed
+      - name: Create Java source directories and parser class
         run: |
           mkdir -p src/main/java/com/example
+          cat > src/main/java/com/example/DesignParser.java << 'EOT'
+          package com.example;
           
-          # Create a simple DesignParser class if it doesn't exist
-          if [ ! -f "src/main/java/com/example/DesignParser.java" ]; then
-            cat > src/main/java/com/example/DesignParser.java << 'EOF'
-            package com.example;
-            
-            import org.yaml.snakeyaml.Yaml;
-            import java.io.File;
-            import java.io.FileInputStream;
-            import java.nio.file.Files;
-            import java.nio.file.Paths;
-            import java.util.Map;
-            
-            public class DesignParser {
-                public static void main(String[] args) {
-                    try {
-                        System.out.println("Starting YAML design parsing...");
-                        
-                        // Create target directories
-                        Files.createDirectories(Paths.get("target/apiproxies"));
-                        Files.createDirectories(Paths.get("target/sharedflows"));
-                        
-                        // Load and parse all YAML files in the designs directory
-                        File designsDir = new File("designs");
-                        if (designsDir.exists() && designsDir.isDirectory()) {
-                            for (File yamlFile : designsDir.listFiles((dir, name) -> name.endsWith(".yaml"))) {
-                                System.out.println("Processing " + yamlFile.getName());
-                                
-                                Yaml yaml = new Yaml();
-                                Map<String, Object> data = yaml.load(new FileInputStream(yamlFile));
-                                
-                                // Process shared flows first
-                                if (data.containsKey("sharedFlows")) {
-                                    System.out.println("Found shared flows, processing...");
-                                    // In a real implementation, generate shared flow bundles here
-                                }
-                                
-                                // Process proxies second
-                                if (data.containsKey("proxies")) {
-                                    System.out.println("Found API proxies, processing...");
-                                    // In a real implementation, generate API proxy bundles here
-                                }
-                            }
-                        }
-                        
-                        System.out.println("YAML design parsing completed.");
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        System.exit(1);
-                    }
-                }
-            }
-            EOF
-          fi
+          import org.yaml.snakeyaml.Yaml;
+          import java.io.File;
+          import java.io.FileInputStream;
+          import java.nio.file.Files;
+          import java.nio.file.Paths;
+          import java.util.Map;
+          
+          public class DesignParser {
+              public static void main(String[] args) {
+                  try {
+                      System.out.println("Starting YAML design parsing...");
+                      
+                      // Create target directories
+                      Files.createDirectories(Paths.get("target/apiproxies"));
+                      Files.createDirectories(Paths.get("target/sharedflows"));
+                      
+                      // Load and parse all YAML files in the designs directory
+                      File designsDir = new File("designs");
+                      if (designsDir.exists() && designsDir.isDirectory()) {
+                          for (File yamlFile : designsDir.listFiles((dir, name) -> name.endsWith(".yaml"))) {
+                              System.out.println("Processing " + yamlFile.getName());
+                              
+                              Yaml yaml = new Yaml();
+                              Map<String, Object> data = yaml.load(new FileInputStream(yamlFile));
+                              
+                              // Process shared flows first
+                              if (data.containsKey("sharedFlows")) {
+                                  System.out.println("Found shared flows, processing...");
+                                  // In a real implementation, generate shared flow bundles here
+                              }
+                              
+                              // Process proxies second
+                              if (data.containsKey("proxies")) {
+                                  System.out.println("Found API proxies, processing...");
+                                  // In a real implementation, generate API proxy bundles here
+                              }
+                          }
+                      }
+                      
+                      System.out.println("YAML design parsing completed.");
+                  } catch (Exception e) {
+                      e.printStackTrace();
+                      System.exit(1);
+                  }
+              }
+          }
+          EOT
 
-      - name: Install specific version of Maven Apigee plugin
+      - name: Create pom.xml file
         run: |
-          # Download the apigee-deploy-maven-plugin repo which has the correct plugin
+          cat > pom.xml << 'EOT'
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>apigee-design-automation</artifactId>
+              <version>1.0-SNAPSHOT</version>
+              <packaging>pom</packaging>
+          
+              <properties>
+                  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+                  <maven.compiler.source>1.8</maven.compiler.source>
+                  <maven.compiler.target>1.8</maven.compiler.target>
+                  <apigee.deploy.plugin.version>2.3.5</apigee.deploy.plugin.version>
+                  <apigee.org>${env.APIGEE_ORG}</apigee.org>
+                  <apigee.env>${env.APIGEE_ENV}</apigee.env>
+                  <apigee.bearer>${env.APIGEE_TOKEN}</apigee.bearer>
+              </properties>
+          
+              <dependencies>
+                  <dependency>
+                      <groupId>org.yaml</groupId>
+                      <artifactId>snakeyaml</artifactId>
+                      <version>2.2</version>
+                  </dependency>
+              </dependencies>
+          
+              <build>
+                  <plugins>
+                      <!-- This plugin runs the custom Java code to parse YAML and generate bundles -->
+                      <plugin>
+                          <groupId>org.codehaus.mojo</groupId>
+                          <artifactId>exec-maven-plugin</artifactId>
+                          <version>3.2.0</version>
+                          <executions>
+                              <execution>
+                                  <id>generate-apigee-bundles-from-yaml</id>
+                                  <phase>generate-resources</phase>
+                                  <goals>
+                                      <goal>java</goal>
+                                  </goals>
+                                  <configuration>
+                                      <mainClass>com.example.DesignParser</mainClass>
+                                      <cleanupDaemonThreads>false</cleanupDaemonThreads>
+                                  </configuration>
+                              </execution>
+                          </executions>
+                      </plugin>
+                  </plugins>
+              </build>
+          </project>
+          EOT
+
+      - name: Install Apigee Maven Plugin from GitHub
+        run: |
           git clone https://github.com/apigee/apigee-deploy-maven-plugin.git
           cd apigee-deploy-maven-plugin
-          mvn clean install -DskipTests
+          mvn install -DskipTests
           cd ..
 
-      - name: Build and Deploy to Apigee X
-        run: mvn clean install -P apigee -Dapigee.options=update
+      - name: Run Maven Clean Install to Process YAML
+        run: mvn clean compile exec:java -Dexec.mainClass="com.example.DesignParser"
+
+      - name: Debug Files
+        run: |
+          echo "Current directory structure:"
+          find . -type f -not -path "*/\.*" | sort
