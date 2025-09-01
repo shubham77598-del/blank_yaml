@@ -1,5 +1,5 @@
 apigee:
-  name: sample
+  name: sampleapi
   sharedFlows:
     - name: common-logging
       policies:
