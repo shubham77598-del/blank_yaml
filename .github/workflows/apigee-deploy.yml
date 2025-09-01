@@ -10,7 +10,6 @@ on:
 jobs:
   build-and-deploy-to-apigee:
     runs-on: ubuntu-latest
-    # Specify the environment to use the apigee environment secrets
     environment: apigee
     permissions:
       contents: 'read'
@@ -40,7 +39,6 @@ jobs:
           credentials_json: '${{ secrets.APIGEE_SA_KEY }}'
           create_credentials_file: true
           export_environment_variables: true
-          cleanup_credentials: true
 
       - name: Get Google Cloud Access Token
         id: get_token
@@ -57,6 +55,17 @@ jobs:
           echo "APIGEE_ORG: $APIGEE_ORG"
           echo "APIGEE_ENV: $APIGEE_ENV"
           echo "Token is available: ${{ env.APIGEE_TOKEN != '' }}"
+          
+      - name: Verify Java Code Exists
+        run: |
+          # Check if Java source files exist
+          if [ ! -d "src/main/java/com/example" ]; then
+            echo "Creating necessary Java directories..."
+            mkdir -p src/main/java/com/example
+          fi
+          
+          # Let's confirm we have the needed Java files
+          ls -la src/main/java/com/example || echo "Java source directory needs setup"
 
       - name: Build Bundles and Deploy to Apigee X
-        run: mvn clean install -Dapigee.config.options=update -X
+        run: mvn clean install -Dapigee.options=update

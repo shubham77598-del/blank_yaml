@@ -36,7 +36,8 @@ proxies:
           - name: product-flow
             condition: "true"
             request:
-              - sharedFlow: security-flow # This will be converted to a FlowCallout policy
+              - sharedFlow: security-flow  # This will be converted to a
+                                          # FlowCallout policy
               - policy: product-quota
     targetEndpoints:
       - name: default

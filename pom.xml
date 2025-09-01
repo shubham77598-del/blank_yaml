@@ -11,14 +11,15 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <apigee.config.plugin.version>2.5.1</apigee.config.plugin.version>
+        <!-- Use an earlier version of the plugin that's more readily available -->
+        <apigee.config.plugin.version>1.4.3</apigee.config.plugin.version>
         <!-- Credentials will be injected by GitHub Actions environment variables -->
         <apigee.org>${env.APIGEE_ORG}</apigee.org>
         <apigee.env>${env.APIGEE_ENV}</apigee.env>
         <apigee.token>${env.APIGEE_TOKEN}</apigee.token>
     </properties>
 
-    <!-- Add this repositories section to find the Apigee Maven plugin -->
+    <!-- Add repositories section with Apigee public Maven repo -->
     <repositories>
         <repository>
             <id>central</id>
@@ -26,20 +27,13 @@
             <url>https://repo.maven.apache.org/maven2</url>
         </repository>
         <repository>
-            <id>apigee-repo</id>
-            <name>Apigee Maven Repository</name>
-            <url>https://maven.google.com</url>
-            <releases>
-                <enabled>true</enabled>
-                <updatePolicy>daily</updatePolicy>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
+            <id>apigee-public</id>
+            <name>Apigee Public Repository</name>
+            <url>https://github.com/apigee/apigee-deploy-maven-plugin/raw/mvn-repo</url>
         </repository>
     </repositories>
 
-    <!-- Add this pluginRepositories section as well -->
+    <!-- Add pluginRepositories section as well -->
     <pluginRepositories>
         <pluginRepository>
             <id>central</id>
@@ -47,16 +41,9 @@
             <url>https://repo.maven.apache.org/maven2</url>
         </pluginRepository>
         <pluginRepository>
-            <id>apigee-repo</id>
-            <name>Apigee Maven Repository</name>
-            <url>https://maven.google.com</url>
-            <releases>
-                <enabled>true</enabled>
-                <updatePolicy>daily</updatePolicy>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
+            <id>apigee-public</id>
+            <name>Apigee Public Repository</name>
+            <url>https://github.com/apigee/apigee-deploy-maven-plugin/raw/mvn-repo</url>
         </pluginRepository>
     </pluginRepositories>
 
@@ -90,45 +77,49 @@
                 </executions>
             </plugin>
 
-            <!-- This is the official Apigee plugin for deploying configurations -->
+            <!-- Using the properly working version of the Apigee plugin -->
             <plugin>
-                <groupId>com.apigee.edge.config</groupId>
-                <artifactId>apigee-config-maven-plugin</artifactId>
-                <version>${apigee.config.plugin.version}</version>
+                <groupId>io.apigee.build-tools.enterprise4g</groupId>
+                <artifactId>apigee-edge-maven-plugin</artifactId>
+                <version>1.4.3</version>
                 <executions>
-                    <!-- EXECUTION 1: Deploy SharedFlows FIRST -->
+                    <!-- Deploy SharedFlows FIRST -->
                     <execution>
                         <id>deploy-sharedflows</id>
                         <phase>install</phase>
                         <goals>
-                            <goal>sharedflows</goal>
+                            <goal>deploy</goal>
                         </goals>
                         <configuration>
-                            <!-- Deploys all bundles found in the target/sharedflows directory -->
-                            <sharedflow.dir>${project.build.directory}/sharedflows</sharedflow.dir>
+                            <options>update</options>
+                            <!-- Shared flow configuration goes here -->
+                            <directory>${project.build.directory}/sharedflows</directory>
                         </configuration>
                     </execution>
-                    <!-- EXECUTION 2: Deploy API Proxies SECOND -->
+                    <!-- Deploy API Proxies SECOND -->
                     <execution>
                         <id>deploy-proxies</id>
                         <phase>install</phase>
                         <goals>
-                            <goal>apiproxies</goal>
+                            <goal>deploy</goal>
                         </goals>
                         <configuration>
-                            <!-- Deploys all bundles found in the target/apiproxies directory -->
-                            <apiproxy.dir>${project.build.directory}/apiproxies</apiproxy.dir>
+                            <options>update</options>
+                            <!-- API proxy configuration goes here -->
+                            <directory>${project.build.directory}/apiproxies</directory>
                         </configuration>
                     </execution>
                 </executions>
                 <!-- Common configuration for all executions -->
                 <configuration>
-                    <org>${apigee.org}</org>
-                    <token>${apigee.token}</token> <!-- Authentication via automated Service Account token -->
-                    <apigee.hosturl>https://apigee.googleapis.com</apigee.hosturl>
-                    <apigee.apiversion>v1</apigee.apiversion>
-                    <apigee.config.options>update</apigee.config.options> <!-- The deployment strategy -->
                     <skip>false</skip>
+                    <options>update</options>
+                    <authType>oauth</authType> <!-- Use OAuth token -->
+                    <bearerToken>${apigee.token}</bearerToken>
+                    <org>${apigee.org}</org>
+                    <env>${apigee.env}</env>
+                    <apiVersion>v1</apiVersion>
+                    <hostUrl>https://apigee.googleapis.com</hostUrl>
                 </configuration>
             </plugin>
         </plugins>
