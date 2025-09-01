@@ -154,6 +154,12 @@ If the GitHub Actions workflow fails during the "Verify API Deployments" step:
 - **"HTTP 404"**: API proxy exists but base path is incorrect
 - **"HTTP 500"**: API deployed but has runtime errors (check Apigee console logs)
 
+**Recent Fixes (2024-09):**
+- ✅ **Java Version Compatibility**: Fixed Maven compiler version mismatch (Java 1.8 → Java 17)
+- ✅ **Policy Generation**: Added support for VerifyAPIKey, MessageLogging, and Quota policy types
+- ✅ **SharedFlow Dependencies**: Fixed proxy XML to use proper `<SharedFlows>` format
+- ✅ **Robust API Verification**: Enhanced test script with local validation mode and better error handling
+
 The verification ensures your APIs are **actually working**, not just deployed as placeholders.
 
 ## Future Enhancements
