@@ -1,4 +1,4 @@
-package com.company.design;
+package com.apigee.designparser;
 
 import org.yaml.snakeyaml.Yaml;
 
@@ -10,85 +10,73 @@ import java.nio.file.Paths;
 import java.util.*;
 
 /**
- * Parses YAML design files under designs/ and generates Apigee bundles + config.
+ * Parses YAML design files and generates Apigee bundles.
  */
 public class DesignParser {
 
-    private static final String DESIGNS_DIR = "designs";
-    private static final String OUT_BASE = "generated";
-    private static final String OUT_SHARED = OUT_BASE + "/sharedflows";
-    private static final String OUT_PROXIES = OUT_BASE + "/proxies";
-    private static final String OUT_CONFIG = OUT_BASE + "/config";
+    private static final String DESIGN_DIR = "designs";
+    private static final String GENERATED_DIR = "generated";
 
     public static void main(String[] args) throws Exception {
-        ensureDirs();
-        List<File> yamlFiles = discoverDesignFiles();
-        if (yamlFiles.isEmpty()) {
+        Files.createDirectories(Paths.get(GENERATED_DIR));
+
+        File[] yamlFiles = new File(DESIGN_DIR).listFiles((dir, name) -> name.endsWith(".yaml") || name.endsWith(".yml"));
+        if (yamlFiles == null) {
             System.out.println("No design files found.");
             return;
         }
-        for (File f : yamlFiles) {
-            processDesignFile(f);
+
+        for (File file : yamlFiles) {
+            System.out.println("Processing: " + file.getName());
+            processYaml(file);
         }
-        // After generating flows/proxies, generate config module if needed
-        ConfigGenerator.finalizeConfigModule(OUT_CONFIG);
-        System.out.println("All designs processed.");
     }
 
-    private static void ensureDirs() throws Exception {
-        Files.createDirectories(Paths.get(OUT_SHARED));
-        Files.createDirectories(Paths.get(OUT_PROXIES));
-        Files.createDirectories(Paths.get(OUT_CONFIG));
-    }
-
-    private static List<File> discoverDesignFiles() {
-        File dir = new File(DESIGNS_DIR);
-        if (!dir.isDirectory()) return List.of();
-        File[] files = dir.listFiles((d, n) -> n.endsWith(".yaml") || n.endsWith(".yml"));
-        if (files == null) return List.of();
-        return Arrays.asList(files);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void processDesignFile(File file) throws Exception {
-        System.out.println("Processing design: " + file.getName());
+    private static void processYaml(File file) throws Exception {
         Yaml yaml = new Yaml();
-        Map<String, Object> root;
-        try (FileInputStream in = new FileInputStream(file)) {
-            root = yaml.load(in);
-        }
-        if (root == null || !root.containsKey("apigee")) {
-            System.out.println("Skipping file (missing apigee root): " + file.getName());
-            return;
-        }
-        Map<String, Object> apigee = (Map<String, Object>) root.get("apigee");
-        String designName = (String) apigee.getOrDefault("name", stripExt(file.getName()));
+        try (FileInputStream input = new FileInputStream(file)) {
+            Map<String, Object> data = yaml.load(input);
+            if (data.containsKey("apigee")) {
+                Map<String, Object> apigee = (Map<String, Object>) data.get("apigee");
 
-        List<Map<String, Object>> sharedFlows =
-                (List<Map<String, Object>>) apigee.getOrDefault("sharedFlows", List.of());
-        List<Map<String, Object>> proxies =
-                (List<Map<String, Object>>) apigee.getOrDefault("proxies", List.of());
-        List<Map<String, Object>> apiProducts =
-                (List<Map<String, Object>>) apigee.getOrDefault("apiProducts", List.of());
+                // Process shared flows
+                if (apigee.containsKey("sharedFlows")) {
+                    List<Map<String, Object>> sharedFlows = (List<Map<String, Object>>) apigee.get("sharedFlows");
+                    for (Map<String, Object> sf : sharedFlows) {
+                        generateSharedFlow(sf);
+                    }
+                }
 
-        SharedFlowGenerator sfg = new SharedFlowGenerator(OUT_SHARED);
-        for (Map<String, Object> sf : sharedFlows) {
-            sfg.generateSharedFlow(sf, designName);
-        }
-
-        ProxyGenerator pg = new ProxyGenerator(OUT_PROXIES);
-        for (Map<String, Object> px : proxies) {
-            pg.generateProxy(px, designName);
-        }
-
-        // Config entities
-        if (!apiProducts.isEmpty()) {
-            ConfigGenerator.generateApiProducts(apiProducts, OUT_CONFIG + "/entities/apiproducts");
+                // Process proxies
+                if (apigee.containsKey("proxies")) {
+                    List<Map<String, Object>> proxies = (List<Map<String, Object>>) apigee.get("proxies");
+                    for (Map<String, Object> proxy : proxies) {
+                        generateProxy(proxy);
+                    }
+                }
+            }
         }
     }
 
-    private static String stripExt(String name) {
-        int idx = name.lastIndexOf('.');
-        return (idx == -1) ? name : name.substring(0, idx);
+    private static void generateSharedFlow(Map<String, Object> sf) throws Exception {
+        String name = (String) sf.get("name");
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Shared flow name is required.");
+        }
+        Path dir = Paths.get(GENERATED_DIR, "sharedFlows", name);
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("sharedflowbundle.xml"), "Generated shared flow XML...");
+        System.out.println("Generated shared flow: " + name);
+    }
+
+    private static void generateProxy(Map<String, Object> proxy) throws Exception {
+        String name = (String) proxy.get("name");
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Proxy name is required.");
+        }
+        Path dir = Paths.get(GENERATED_DIR, "proxies", name);
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("apiproxy.xml"), "Generated proxy XML...");
+        System.out.println("Generated proxy: " + name);
     }
 }

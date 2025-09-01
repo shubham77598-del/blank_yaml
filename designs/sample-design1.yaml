@@ -3,13 +3,13 @@ apigee:
   version: "1.0"
 
   sharedFlows:
-    - name: common-security
-      description: "Security shared flow"
+    - name: common-logging
+      description: "Shared flow for logging."
       policies:
-        - name: Verify-API-Key
-          type: VerifyAPIKey
+        - name: LogPolicy
+          type: MessageLogging
           configuration:
-            keyLocation: request.header.x-api-key
+            logLevel: DEBUG
 
   proxies:
     - name: sample-api
@@ -17,9 +17,10 @@ apigee:
       basePath: /v1/sample
       target: https://mocktarget.apigee.net
       dependsOn:
-        sharedFlows: [common-security]
+        sharedFlows:
+          - common-logging
       policies:
-        - name: Quota
+        - name: QuotaPolicy
           type: Quota
           configuration:
             limit: 500
@@ -28,11 +29,11 @@ apigee:
         - name: default
           condition: true
           request:
-            - policy: Verify-API-Key
-            - policy: Quota
+            - policy: LogPolicy
+            - policy: QuotaPolicy
 
   apiProducts:
-    - name: Sample-Product
+    - name: SampleProduct
       displayName: "Sample Product"
       approvalType: AUTO
       proxies:

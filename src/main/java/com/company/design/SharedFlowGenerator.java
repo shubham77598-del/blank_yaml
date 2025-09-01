@@ -1,4 +1,4 @@
-package com.company.design;
+package com.apigee.designparser;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 
 public class SharedFlowGenerator {
-
     private final String outputDir;
 
     public SharedFlowGenerator(String outputDir) {
@@ -76,14 +75,14 @@ public class SharedFlowGenerator {
     }
 
     private String renderPom(String designName, String name) {
-        // IMPORTANT: Use maven properties (${apigee.org}, ${apigee.env}, ${serviceAccountFile}) passed via -D
+        // Generate the POM with the correct Maven configuration
         return """
                <?xml version="1.0" encoding="UTF-8"?>
                <project xmlns="http://maven.apache.org/POM/4.0.0"
                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
                  <modelVersion>4.0.0</modelVersion>
-                 <groupId>com.apigee.edge.sharedflow.%s</groupId>
+                 <groupId>com.apigee.edge.sharedflow</groupId>
                  <artifactId>%s</artifactId>
                  <version>1.0</version>
                  <packaging>pom</packaging>
@@ -117,6 +116,6 @@ public class SharedFlowGenerator {
                    </plugins>
                  </build>
                </project>
-               """.formatted(designName, name);
+               """.formatted(name, name);
     }
 }
