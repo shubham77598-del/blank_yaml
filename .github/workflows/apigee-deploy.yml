@@ -56,12 +56,12 @@ jobs:
             fi
           fi
           
-          # Validate required environment variables
-          if [ -z "$APIGEE_ORG" ] && [ -z "${{ secrets.APIGEE_ORG }}" ] && [ -z "${{ secrets.apigee }}" ]; then
+          # Validate required environment variables are now properly set
+          if [ -z "$APIGEE_ORG" ]; then
             echo "Error: APIGEE_ORG not found in secrets or apigee JSON"
             exit 1
           fi
-          if [ -z "$APIGEE_ENV" ] && [ -z "${{ secrets.APIGEE_ENV }}" ] && [ -z "${{ secrets.apigee }}" ]; then
+          if [ -z "$APIGEE_ENV" ]; then
             echo "Error: APIGEE_ENV not found in secrets or apigee JSON"  
             exit 1
           fi
