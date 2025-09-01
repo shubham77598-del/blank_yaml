@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Specify the environment to use the environment secrets
+    environment: apigee
     
     steps:
     - name: Checkout code
@@ -21,13 +23,13 @@ jobs:
         distribution: 'temurin'
         cache: maven
 
-    # Set up Google Cloud SDK (just installation)
+    # Set up Google Cloud SDK
     - name: Set up Google Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
         version: 'latest'
         
-    # Authentication step - separate from setup
+    # Authentication step with explicit credentials_json
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
@@ -45,7 +47,7 @@ jobs:
       run: |
         mvn compile exec:java -Dexec.mainClass="com.example.DesignParser"
       
-    # Deploy shared flows first (as required)
+    # Deploy shared flows first
     - name: Deploy Shared Flows first
       run: |
         if [ -d "target/sharedflows" ]; then
@@ -79,7 +81,7 @@ jobs:
           echo "No shared flows directory found. Skipping shared flow deployment."
         fi
       
-    # Then deploy proxies (only if shared flows succeeded)
+    # Then deploy proxies
     - name: Deploy API Proxies
       if: success()
       run: |
@@ -114,7 +116,7 @@ jobs:
           echo "No proxies directory found. Skipping proxy deployment."
         fi
 
-    # Upload generated artifacts for inspection (even if deployment fails)
+    # Upload generated artifacts
     - name: Upload artifacts
       if: success() || failure()
       uses: actions/upload-artifact@v4
