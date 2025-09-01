@@ -42,4 +42,3 @@ proxies:
     targetEndpoints:
       - name: default
         url: https://api.example.com/products
- 
