@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<APIProxy name="sample-api" revision="1">
-  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>
-  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>
-</APIProxy>

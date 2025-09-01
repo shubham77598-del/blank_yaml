@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<SharedFlow name="common-logging">
-  <DisplayName>common-logging</DisplayName>
-  <Description>Common logging policies for all APIs</Description>
-</SharedFlow>

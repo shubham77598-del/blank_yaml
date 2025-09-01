@@ -1,6 +1,6 @@
 # Build
 target/
-generated/**/target/
+generated/
 
 # IDE
 .idea/
