@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -6,13 +7,18 @@
   <groupId>com.company</groupId>
   <artifactId>apigee-design-parser</artifactId>
   <version>1.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
+  <name>Apigee Design Parser</name>
+  <description>Generates Apigee X shared flows, proxies and config from a single YAML design file.</description>
 
   <properties>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Centralize plugin versions -->
+    <apigee.maven.plugin.version>1.0.0</apigee.maven.plugin.version>
+    <apigee.config.plugin.version>2.3.0</apigee.config.plugin.version>
     <snakeyaml.version>1.33</snakeyaml.version>
+    <exec.plugin.version>3.0.0</exec.plugin.version>
   </properties>
 
   <dependencies>
@@ -29,15 +35,11 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
-        <configuration>
-          <source>${maven.compiler.source}</source>
-          <target>${maven.compiler.target}</target>
-        </configuration>
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>3.0.0</version>
+        <version>${exec.plugin.version}</version>
         <configuration>
           <mainClass>com.company.design.DesignParser</mainClass>
         </configuration>

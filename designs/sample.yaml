@@ -7,15 +7,11 @@ apigee:
           type: VerifyAPIKey
           configuration:
             keyLocation: request.header.x-api-key
-        - name: LogPolicy
-          type: MessageLogging
-          configuration:
-            logLevel: DEBUG
   proxies:
-    - name: sample-api
-      description: "Sample API"
+    - name: sample-proxy
       basePath: /v1/sample
       target: https://mocktarget.apigee.net
+      description: Sample proxy generated from design
       dependsOn:
         sharedFlows:
           - common-logging
@@ -30,16 +26,15 @@ apigee:
           condition: true
           request:
             - policy: Verify-API-Key
-            - policy: LogPolicy
             - policy: QuotaPolicy
   apiProducts:
     - name: SampleProduct
       displayName: Sample Product
-      approvalType: AUTO
       proxies:
-        - sample-api
+        - sample-proxy
       environments:
-        - ${APIGEE_ENV}
+        - eval
+      approvalType: AUTO
       quota:
         limit: 1000
         interval: 1

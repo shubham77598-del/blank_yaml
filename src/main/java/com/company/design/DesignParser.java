@@ -4,126 +4,132 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 
+/**
+ * Reads all YAML design files in designs/ and generates:
+ *  - Shared Flow modules
+ *  - Proxy modules
+ *  - Config (API Products) module
+ * Then CI will deploy them in the correct order.
+ */
 public class DesignParser {
 
     private static final String DESIGNS_DIR = "designs";
     private static final String GENERATED_ROOT = "generated";
     private static final String SHARED_OUT = GENERATED_ROOT + "/sharedflows";
     private static final String PROXY_OUT = GENERATED_ROOT + "/proxies";
-    private static final String CONFIG_OUT = GENERATED_ROOT + "/config/entities";
+    private static final String CONFIG_ROOT = GENERATED_ROOT + "/config";
+    private static final String CONFIG_ENTITIES = CONFIG_ROOT + "/entities";
 
     public static void main(String[] args) throws Exception {
-        ensureDirs();
+        System.out.println("=== Apigee Design Parser ===");
+        cleanGeneratedIfRequested();
+        prepareDirs();
+
         List<File> designFiles = findDesignFiles();
         if (designFiles.isEmpty()) {
-            System.out.println("No design YAML files found in /" + DESIGNS_DIR);
+            System.out.println("No design YAML files found in " + DESIGNS_DIR + "/");
             return;
         }
 
-        SharedFlowGenerator sfg = new SharedFlowGenerator(SHARED_OUT);
-        ProxyGenerator pg = new ProxyGenerator(PROXY_OUT);
+        SharedFlowGenerator sfGen = new SharedFlowGenerator(SHARED_OUT);
+        ProxyGenerator proxyGen = new ProxyGenerator(PROXY_OUT);
 
         for (File f : designFiles) {
             System.out.println("Processing design file: " + f.getName());
-            Map<String, Object> root = loadYaml(f);
-            if (root == null) {
-                System.out.println("  Skipping (empty): " + f.getName());
-                continue;
-            }
+            Map<String,Object> root = loadYaml(f);
+            if (root == null) continue;
+
             Object apigeeObj = root.get("apigee");
             if (!(apigeeObj instanceof Map)) {
-                System.out.println("  Skipping (missing 'apigee' root): " + f.getName());
+                System.out.println("  Skipping: 'apigee' root not found.");
                 continue;
             }
             Map apigee = (Map) apigeeObj;
-            String designName = safeString(apigee.get("name"));
+
+            String designName = str(apigee.get("name"));
             if (designName == null || designName.trim().isEmpty()) {
                 designName = stripExt(f.getName());
             }
 
             // Shared Flows first
-            List<Map<String, Object>> sharedFlows = castList(apigee.get("sharedFlows"));
-            if (sharedFlows != null) {
-                for (Map<String, Object> sf : sharedFlows) {
-                    try {
-                        sfg.generateSharedFlow(sf, designName);
-                    } catch (Exception ex) {
-                        System.err.println("  ERROR generating shared flow: " + ex.getMessage());
-                        throw ex;
-                    }
-                }
+            for (Map<String,Object> sf : listOfMaps(apigee.get("sharedFlows"))) {
+                sfGen.generateSharedFlow(sf, designName);
             }
 
             // Proxies
-            List<Map<String, Object>> proxies = castList(apigee.get("proxies"));
-            if (proxies != null) {
-                for (Map<String, Object> px : proxies) {
-                    try {
-                        pg.generateProxy(px, designName);
-                    } catch (Exception ex) {
-                        System.err.println("  ERROR generating proxy: " + ex.getMessage());
-                        throw ex;
-                    }
-                }
+            for (Map<String,Object> px : listOfMaps(apigee.get("proxies"))) {
+                proxyGen.generateProxy(px, designName);
             }
 
             // API Products (config)
-            List<Map<String, Object>> products = castList(apigee.get("apiProducts"));
-            if (products != null && !products.isEmpty()) {
-                ConfigGenerator.generateApiProducts(products, CONFIG_OUT);
-                ConfigGenerator.finalizeConfigModule("generated/config");
+            List<Map<String,Object>> products = listOfMaps(apigee.get("apiProducts"));
+            if (!products.isEmpty()) {
+                ConfigGenerator.generateApiProducts(products, CONFIG_ENTITIES);
+                ConfigGenerator.finalizeConfigModule(CONFIG_ROOT);
             }
         }
-        System.out.println("Done.");
+
+        System.out.println("Generation complete. See 'generated/' directory.");
     }
 
-    private static void ensureDirs() throws Exception {
+    private static void cleanGeneratedIfRequested() throws Exception {
+        String flag = System.getProperty("cleanGenerated");
+        if ("true".equalsIgnoreCase(flag)) {
+            Path g = Paths.get(GENERATED_ROOT);
+            if (Files.exists(g)) {
+                System.out.println("Cleaning existing generated/ directory...");
+                deleteRecursively(g);
+            }
+        }
+    }
+
+    private static void deleteRecursively(Path root) throws Exception {
+        if (!Files.exists(root)) return;
+        Files.walk(root)
+            .sorted(Comparator.reverseOrder())
+            .forEach(p -> {
+                try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+            });
+    }
+
+    private static void prepareDirs() throws Exception {
         Files.createDirectories(Paths.get(SHARED_OUT));
         Files.createDirectories(Paths.get(PROXY_OUT));
-        Files.createDirectories(Paths.get(CONFIG_OUT));
+        Files.createDirectories(Paths.get(CONFIG_ENTITIES));
     }
 
     private static List<File> findDesignFiles() {
-        File dir = new File(DESIGNS_DIR);
-        if (!dir.isDirectory()) return Collections.emptyList();
-        File[] arr = dir.listFiles(functionalYamlFilter());
-        if (arr == null || arr.length == 0) return Collections.emptyList();
+        File d = new File(DESIGNS_DIR);
+        if (!d.isDirectory()) return Collections.emptyList();
+        File[] arr = d.listFiles((dir, name) -> {
+            String lower = name.toLowerCase(Locale.ENGLISH);
+            return lower.endsWith(".yaml") || lower.endsWith(".yml");
+        });
+        if (arr == null) return Collections.emptyList();
         return Arrays.asList(arr);
     }
 
-    private static java.io.FilenameFilter functionalYamlFilter() {
-        return new java.io.FilenameFilter() {
-            public boolean accept(File d, String n) {
-                return n.endsWith(".yaml") || n.endsWith(".yml");
-            }
-        };
-    }
-
-    private static Map<String, Object> loadYaml(File f) throws Exception {
+    private static Map<String,Object> loadYaml(File f) throws Exception {
         FileInputStream in = new FileInputStream(f);
         try {
-            Yaml yaml = new Yaml();
-            Object o = yaml.load(in);
-            if (o instanceof Map) {
-                return (Map<String, Object>) o;
-            }
+            Object o = new Yaml().load(in);
+            if (o instanceof Map) return (Map<String,Object>) o;
+            System.out.println("  Skipping: YAML root is not a map.");
             return null;
-        } finally {
-            in.close();
-        }
+        } finally { in.close(); }
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> castList(Object o) {
+    private static List<Map<String,Object>> listOfMaps(Object o) {
+        List<Map<String,Object>> out = new ArrayList<>();
         if (o instanceof List) {
-            return (List<Map<String, Object>>) o;
+            for (Object item : (List)o) {
+                if (item instanceof Map) out.add((Map<String,Object>) item);
+            }
         }
-        return null;
+        return out;
     }
 
     private static String stripExt(String n) {
@@ -131,7 +137,5 @@ public class DesignParser {
         return i == -1 ? n : n.substring(0, i);
     }
 
-    private static String safeString(Object o) {
-        return o == null ? null : String.valueOf(o);
-    }
+    private static String str(Object o) { return o == null ? null : String.valueOf(o); }
 }

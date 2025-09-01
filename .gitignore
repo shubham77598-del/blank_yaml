@@ -1,12 +1,18 @@
 # Build
 target/
+generated/**/target/
+
 # IDE
 .idea/
 *.iml
-.classpath
-.project
+*.classpath
+*.project
 .settings/
-# Generated
-generated/
+bin/
+
+# System
+.DS_Store
+
 # Secrets
 sa.json
+*.key.json

@@ -1,0 +1,107 @@
+# Apigee Design Driven Deployment
+
+This repository demonstrates **single YAML design → generated Apigee X artifacts → automated deploy**.
+
+## Flow
+
+1. Developer edits `designs/*.yaml`.
+2. Push triggers GitHub Action:
+   - Runs Java generator (SnakeYAML) to build:
+     - `generated/sharedflows/<sf>/sharedflowbundle/...`
+     - `generated/proxies/<proxy>/apiproxy/...`
+     - `generated/config/entities/*.json` (API Products)
+     - Each with its own `pom.xml`
+   - Deploy order:
+     1. Shared Flows (import + deploy)
+     2. Proxies (import + deploy)
+     3. Config (API Products via apigee-config-maven-plugin)
+
+## Key Plugins
+
+| Purpose              | Plugin Group / Artifact                             |
+|----------------------|-----------------------------------------------------|
+| Shared Flow / Proxy  | `com.google.cloud.apigee:apigee-maven-plugin`       |
+| API Products config  | `com.apigee.edge.config:apigee-config-maven-plugin` |
+| Zipping bundles      | `org.apache.maven.plugins:maven-antrun-plugin`      |
+
+We **manually zip** the bundle with AntRun, then the Apigee plugin imports and deploys it. This avoids legacy Edge-specific plugin issues.
+
+## Service Account
+
+GitHub Secret `APIGEE_SA_KEY_JSON` must contain the raw JSON of a GCP service account with:
+- `roles/apigee.admin` (or appropriate combination)
+- Access to the Apigee X org & environment
+
+Workflow writes it to `sa.json` (ignored by git).
+
+## Example Design (excerpt)
+
+```yaml
+apigee:
+  name: sample
+  sharedFlows:
+    - name: common-logging
+      policies:
+        - name: Verify-API-Key
+          type: VerifyAPIKey
+  proxies:
+    - name: sample-proxy
+      basePath: /v1/sample
+      target: https://mocktarget.apigee.net
+      dependsOn:
+        sharedFlows: [ common-logging ]
+      policies:
+        - name: QuotaPolicy
+          type: Quota
+      flows:
+        - name: default
+          condition: true
+          request:
+            - policy: Verify-API-Key
+            - policy: QuotaPolicy
+  apiProducts:
+    - name: SampleProduct
+      proxies: [ sample-proxy ]
+      environments: [ eval ]
+```
+
+## Local Usage
+
+```powershell
+# Generate
+mvn -q -DcleanGenerated=true compile exec:java -Dexec.mainClass="com.company.design.DesignParser"
+
+# Deploy one shared flow
+cd generated/sharedflows/common-logging
+mvn install -Dapigee.org=YOUR_ORG -Dapigee.env=eval -DserviceAccountFile=PATH\TO\sa.json
+```
+
+Or full scripted:
+
+```powershell
+pwsh scripts/deploy-local.ps1 -Org YOUR_ORG -Env eval -ServiceAccount C:\path\sa.json -Regenerate
+```
+
+## Adding More Policies
+
+Extend `SharedFlowGenerator.renderPolicy()` and `ProxyGenerator.renderPolicy()` with new cases (SpikeArrest, AssignMessage, etc). If complexity grows, refactor into a `PolicyWriter` interface.
+
+## Token Substitution (Optional)
+
+If you want environment-driven tokens (e.g. `${APIGEE_ENV}` inside the YAML) add a simple post-load pass in `DesignParser` to replace placeholders with environment variables.
+
+## Why Not the Old Edge Plugin?
+
+The legacy `io.apigee.build-tools.enterprise4g` plugin has brittle behavior (NullPointerException with Apigee X SAs). This repo uses the modern Google Cloud Apigee plugin for a stable import/deploy lifecycle.
+
+## Future Enhancements
+
+- Validation for missing referenced policies
+- Multiple environments deploy loop
+- More config entity types (developers, apps)
+- Unit tests for YAML parsing
+- Property-driven versioning
+
+## License
+
+Internal / sample use.
