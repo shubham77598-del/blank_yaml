@@ -40,51 +40,67 @@ jobs:
       
     - name: Deploy Shared Flows first
       run: |
-        cd target/sharedflows
-        if [ -d "*" ]; then
-          for d in */; do
+        if [ -d "target/sharedflows" ]; then
+          echo "Checking for shared flows to deploy..."
+          FOUND_FLOWS=false
+          
+          for d in target/sharedflows/*/; do
             if [ -d "$d" ]; then
+              FOUND_FLOWS=true
               cd "$d"
               echo "Deploying shared flow: $(basename "$d")"
               mvn clean install -Papigee-deploy \
                 -Dapigee.org=${{ secrets.APIGEE_ORG }} \
                 -Dapigee.env=${{ secrets.APIGEE_ENV }} \
                 -Dbearer=${{ steps.auth.outputs.token }}
+              
               RESULT=$?
               if [ $RESULT -ne 0 ]; then
                 echo "Shared flow deployment failed, exiting"
                 exit $RESULT
               fi
-              cd ..
+              cd - > /dev/null
             fi
           done
+          
+          if [ "$FOUND_FLOWS" = false ]; then
+            echo "No shared flow directories found in target/sharedflows/"
+          fi
         else
-          echo "No shared flows to deploy"
+          echo "No shared flows directory found. Skipping shared flow deployment."
         fi
       
     - name: Deploy API Proxies
       if: success()
       run: |
-        cd target/proxies
-        if [ -d "*" ]; then
-          for d in */; do
+        if [ -d "target/proxies" ]; then
+          echo "Checking for API proxies to deploy..."
+          FOUND_PROXIES=false
+          
+          for d in target/proxies/*/; do
             if [ -d "$d" ]; then
+              FOUND_PROXIES=true
               cd "$d"
               echo "Deploying proxy: $(basename "$d")"
               mvn clean install -Papigee-deploy \
                 -Dapigee.org=${{ secrets.APIGEE_ORG }} \
                 -Dapigee.env=${{ secrets.APIGEE_ENV }} \
                 -Dbearer=${{ steps.auth.outputs.token }}
+              
               RESULT=$?
               if [ $RESULT -ne 0 ]; then
                 echo "Proxy deployment failed"
                 exit $RESULT
               fi
-              cd ..
+              cd - > /dev/null
             fi
           done
+          
+          if [ "$FOUND_PROXIES" = false ]; then
+            echo "No proxy directories found in target/proxies/"
+          fi
         else
-          echo "No proxies to deploy"
+          echo "No proxies directory found. Skipping proxy deployment."
         fi
 
     - name: Upload artifacts
