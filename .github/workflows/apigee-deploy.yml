@@ -3,28 +3,30 @@ name: Apigee X Design-Driven Deployment
 on:
   push:
     branches:
-      - main
+      - main # Or your primary branch
     paths:
       - 'designs/**.yaml'
 
 jobs:
-  build-and-deploy:
+  build-and-deploy-to-apigee:
     runs-on: ubuntu-latest
+    # Add this environment specification
+    environment: apigee
     permissions:
       contents: 'read'
       id-token: 'write'
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install yamllint
         run: pip install yamllint
 
-      - name: Lint YAML files
+      - name: Lint YAML Files
         run: yamllint designs/
 
-      - name: Set up JDK 1.8
+      - name: Set up JDK 1.8 for Maven
         uses: actions/setup-java@v4
         with:
           java-version: '8'
@@ -36,17 +38,18 @@ jobs:
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: '${{ secrets.APIGEE_SA_KEY }}'
+          create_credentials_file: true
+          export_environment_variables: true
+          cleanup_credentials: true
 
-      - name: Get Access Token
+      - name: Get Google Cloud Access Token
         id: get_token
-        run: |
-          TOKEN=$(gcloud auth print-access-token)
-          echo "APIGEE_TOKEN=${TOKEN}" >> $GITHUB_ENV
+        run: echo "APIGEE_TOKEN=$(gcloud auth print-access-token)" >> $GITHUB_ENV
 
-      - name: Set Apigee Org and Env
+      - name: Set Apigee Org and Env for Maven
         run: |
           echo "APIGEE_ORG=${{ secrets.APIGEE_ORG }}" >> $GITHUB_ENV
           echo "APIGEE_ENV=${{ secrets.APIGEE_ENV }}" >> $GITHUB_ENV
 
-      - name: Build and Deploy with Maven
-        run: mvn install -P apigee -Dapigee.config.options=update
+      - name: Build Bundles and Deploy to Apigee X
+        run: mvn clean install -Dapigee.config.options=update
