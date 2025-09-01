@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SharedFlowBundle name="common-logging" revision="1">
+  <Description>Common logging policies for all APIs</Description>
+  <Flows>
+  </Flows>
+</SharedFlowBundle>

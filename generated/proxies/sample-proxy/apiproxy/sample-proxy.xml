@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<APIProxy name="sample-proxy" revision="1">
+  <Description>Sample proxy generated from design</Description>
+  <DependsOn>sf:common-logging</DependsOn>
+  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>
+  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>
+</APIProxy>

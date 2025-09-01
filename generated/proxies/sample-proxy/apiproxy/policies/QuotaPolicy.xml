@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Quota name="QuotaPolicy">
+  <DisplayName>QuotaPolicy</DisplayName>
+  <Allow count="500"/>
+  <Interval>1</Interval>
+  <TimeUnit>minute</TimeUnit>
+</Quota>

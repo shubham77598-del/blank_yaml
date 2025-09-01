@@ -1,0 +1,11 @@
+{
+  "name": "SampleProduct",
+  "displayName": "Sample Product",
+  "approvalType": "AUTO",
+  "proxies": ["sample-proxy"],
+  "environments": ["eval"],
+  "quota":"1000",
+  "quotaInterval":"1",
+  "quotaTimeUnit":"minute",
+  "attributes": []
+}
