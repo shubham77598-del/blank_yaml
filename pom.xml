@@ -11,16 +11,56 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <!-- Apigee Plugin Version -->
         <apigee.config.plugin.version>2.5.1</apigee.config.plugin.version>
-        <!-- Apigee Credentials from GitHub Actions ENV -->
+        <!-- Credentials will be injected by GitHub Actions environment variables -->
         <apigee.org>${env.APIGEE_ORG}</apigee.org>
         <apigee.env>${env.APIGEE_ENV}</apigee.env>
         <apigee.token>${env.APIGEE_TOKEN}</apigee.token>
     </properties>
 
+    <!-- Add this repositories section to find the Apigee Maven plugin -->
+    <repositories>
+        <repository>
+            <id>central</id>
+            <name>Central Repository</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+        <repository>
+            <id>apigee-repo</id>
+            <name>Apigee Maven Repository</name>
+            <url>https://maven.google.com</url>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>daily</updatePolicy>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <!-- Add this pluginRepositories section as well -->
+    <pluginRepositories>
+        <pluginRepository>
+            <id>central</id>
+            <name>Central Repository</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </pluginRepository>
+        <pluginRepository>
+            <id>apigee-repo</id>
+            <name>Apigee Maven Repository</name>
+            <url>https://maven.google.com</url>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>daily</updatePolicy>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </pluginRepository>
+    </pluginRepositories>
+
     <dependencies>
-        <!-- SnakeYAML for parsing the design files -->
         <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
@@ -29,34 +69,15 @@
     </dependencies>
 
     <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.codehaus.mojo</groupId>
-                    <artifactId>exec-maven-plugin</artifactId>
-                    <version>3.2.0</version>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.13.0</version>
-                </plugin>
-                <plugin>
-                    <groupId>com.apigee.edge.config</groupId>
-                    <artifactId>apigee-config-maven-plugin</artifactId>
-                    <version>${apigee.config.plugin.version}</version>
-                </plugin>
-            </plugins>
-        </pluginManagement>
-
         <plugins>
-            <!-- 1. Run the Java Parser to generate bundles from YAML -->
+            <!-- This plugin runs the custom Java code to parse YAML and generate bundles -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
+                <version>3.2.0</version>
                 <executions>
                     <execution>
-                        <id>generate-bundles</id>
+                        <id>generate-apigee-bundles-from-yaml</id>
                         <phase>generate-resources</phase>
                         <goals>
                             <goal>java</goal>
@@ -69,12 +90,13 @@
                 </executions>
             </plugin>
 
-            <!-- 2. Use the Apigee plugin to deploy the generated bundles -->
+            <!-- This is the official Apigee plugin for deploying configurations -->
             <plugin>
                 <groupId>com.apigee.edge.config</groupId>
                 <artifactId>apigee-config-maven-plugin</artifactId>
+                <version>${apigee.config.plugin.version}</version>
                 <executions>
-                    <!-- Deploy SharedFlows FIRST -->
+                    <!-- EXECUTION 1: Deploy SharedFlows FIRST -->
                     <execution>
                         <id>deploy-sharedflows</id>
                         <phase>install</phase>
@@ -82,11 +104,11 @@
                             <goal>sharedflows</goal>
                         </goals>
                         <configuration>
-                            <options>update</options>
-                            <sharedflow.dir>./target/sharedflows</sharedflow.dir>
+                            <!-- Deploys all bundles found in the target/sharedflows directory -->
+                            <sharedflow.dir>${project.build.directory}/sharedflows</sharedflow.dir>
                         </configuration>
                     </execution>
-                    <!-- Deploy API Proxies SECOND -->
+                    <!-- EXECUTION 2: Deploy API Proxies SECOND -->
                     <execution>
                         <id>deploy-proxies</id>
                         <phase>install</phase>
@@ -94,17 +116,18 @@
                             <goal>apiproxies</goal>
                         </goals>
                         <configuration>
-                            <options>update</options>
-                            <apiproxy.dir>./target/apiproxies</apiproxy.dir>
+                            <!-- Deploys all bundles found in the target/apiproxies directory -->
+                            <apiproxy.dir>${project.build.directory}/apiproxies</apiproxy.dir>
                         </configuration>
                     </execution>
                 </executions>
+                <!-- Common configuration for all executions -->
                 <configuration>
                     <org>${apigee.org}</org>
-                    <token>${apigee.token}</token>
-                    <apigee.config.options>update</apigee.config.options>
+                    <token>${apigee.token}</token> <!-- Authentication via automated Service Account token -->
                     <apigee.hosturl>https://apigee.googleapis.com</apigee.hosturl>
                     <apigee.apiversion>v1</apigee.apiversion>
+                    <apigee.config.options>update</apigee.config.options> <!-- The deployment strategy -->
                     <skip>false</skip>
                 </configuration>
             </plugin>

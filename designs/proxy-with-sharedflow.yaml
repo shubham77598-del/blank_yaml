@@ -1,0 +1,43 @@
+---
+sharedFlows:
+  - name: security-flow
+    description: Common security checks
+    policies:
+      - name: oauth-validation
+        type: OAuthV2
+        displayName: Validate OAuth Token
+        configuration:
+          operation: VerifyAccessToken
+      - name: threat-protection
+        type: JSONThreatProtection
+        displayName: JSON Threat Protection
+    flows:
+      - name: default
+        request:
+          - policy: oauth-validation
+          - policy: threat-protection
+
+proxies:
+  - name: product-api
+    basePath: /v1/products
+    description: Product API with shared flow for security
+    policies:
+      - name: product-quota
+        type: Quota
+        displayName: Product API Quota
+        configuration:
+          limit: 50
+          timeUnit: minute
+    endpoints:
+      - name: default
+        type: proxy
+        basePath: /v1/products
+        flows:
+          - name: product-flow
+            condition: "true"
+            request:
+              - sharedFlow: security-flow # This will be converted to a FlowCallout policy
+              - policy: product-quota
+    targetEndpoints:
+      - name: default
+        url: https://api.example.com/products

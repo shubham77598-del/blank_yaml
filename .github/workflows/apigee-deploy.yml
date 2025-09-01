@@ -10,7 +10,7 @@ on:
 jobs:
   build-and-deploy-to-apigee:
     runs-on: ubuntu-latest
-    # Add this environment specification
+    # Specify the environment to use the apigee environment secrets
     environment: apigee
     permissions:
       contents: 'read'
@@ -51,5 +51,12 @@ jobs:
           echo "APIGEE_ORG=${{ secrets.APIGEE_ORG }}" >> $GITHUB_ENV
           echo "APIGEE_ENV=${{ secrets.APIGEE_ENV }}" >> $GITHUB_ENV
 
+      - name: Debug Maven Settings
+        run: |
+          echo "Maven will use the following settings:"
+          echo "APIGEE_ORG: $APIGEE_ORG"
+          echo "APIGEE_ENV: $APIGEE_ENV"
+          echo "Token is available: ${{ env.APIGEE_TOKEN != '' }}"
+
       - name: Build Bundles and Deploy to Apigee X
-        run: mvn clean install -Dapigee.config.options=update
+        run: mvn clean install -Dapigee.config.options=update -X
