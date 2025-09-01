@@ -3,7 +3,7 @@ name: Apigee X Deployment
 # Required GitHub Secrets:
 # - APIGEE_ORG: Your Apigee organization name 
 # - APIGEE_ENV: Target environment (e.g., eval, prod)
-# - APIGEE_SA_KEY_JSON or APIGEE_SA_KEY: GCP service account JSON with Apigee admin permissions
+# - Service Account Key (one of): APIGEE_SA_KEY_JSON, APIGEE_SA_KEY, or apigee
 
 on:
   push:
@@ -31,13 +31,19 @@ jobs:
 
       - name: Write Service Account Key
         run: |
-            # Support both APIGEE_SA_KEY_JSON and APIGEE_SA_KEY for backwards compatibility
+            # Support multiple secret names for backwards compatibility
+            # Priority: APIGEE_SA_KEY_JSON > APIGEE_SA_KEY > apigee
             if [ -n "${{ secrets.APIGEE_SA_KEY_JSON }}" ]; then
               echo "${{ secrets.APIGEE_SA_KEY_JSON }}" > sa.json
             elif [ -n "${{ secrets.APIGEE_SA_KEY }}" ]; then
               echo "${{ secrets.APIGEE_SA_KEY }}" > sa.json
+            elif [ -n "${{ secrets.apigee }}" ]; then
+              echo "${{ secrets.apigee }}" > sa.json
             else
-              echo "Error: Neither APIGEE_SA_KEY_JSON nor APIGEE_SA_KEY secret is configured"
+              echo "Error: No service account secret found. Please configure one of:"
+              echo "  - APIGEE_SA_KEY_JSON (recommended)"
+              echo "  - APIGEE_SA_KEY (legacy)"
+              echo "  - apigee (alternative)"
               exit 1
             fi
             chmod 600 sa.json
