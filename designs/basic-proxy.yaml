@@ -27,4 +27,4 @@ proxies:
               - policy: quota-limit
     targetEndpoints:
       - name: default
-        url: https://api.example.com/customers
+        url: https://api.example.com/customers 
