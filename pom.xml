@@ -11,41 +11,13 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <!-- Use an earlier version of the plugin that's more readily available -->
-        <apigee.config.plugin.version>1.4.3</apigee.config.plugin.version>
+        <!-- Use the latest version from the official repo -->
+        <apigee.deploy.plugin.version>2.1.0</apigee.deploy.plugin.version>
         <!-- Credentials will be injected by GitHub Actions environment variables -->
         <apigee.org>${env.APIGEE_ORG}</apigee.org>
         <apigee.env>${env.APIGEE_ENV}</apigee.env>
-        <apigee.token>${env.APIGEE_TOKEN}</apigee.token>
+        <apigee.bearer>${env.APIGEE_TOKEN}</apigee.bearer>
     </properties>
-
-    <!-- Add repositories section with Apigee public Maven repo -->
-    <repositories>
-        <repository>
-            <id>central</id>
-            <name>Central Repository</name>
-            <url>https://repo.maven.apache.org/maven2</url>
-        </repository>
-        <repository>
-            <id>apigee-public</id>
-            <name>Apigee Public Repository</name>
-            <url>https://github.com/apigee/apigee-deploy-maven-plugin/raw/mvn-repo</url>
-        </repository>
-    </repositories>
-
-    <!-- Add pluginRepositories section as well -->
-    <pluginRepositories>
-        <pluginRepository>
-            <id>central</id>
-            <name>Central Repository</name>
-            <url>https://repo.maven.apache.org/maven2</url>
-        </pluginRepository>
-        <pluginRepository>
-            <id>apigee-public</id>
-            <name>Apigee Public Repository</name>
-            <url>https://github.com/apigee/apigee-deploy-maven-plugin/raw/mvn-repo</url>
-        </pluginRepository>
-    </pluginRepositories>
 
     <dependencies>
         <dependency>
@@ -77,51 +49,83 @@
                 </executions>
             </plugin>
 
-            <!-- Using the properly working version of the Apigee plugin -->
+            <!-- Apigee Deploy Maven Plugin - for Shared Flows -->
             <plugin>
-                <groupId>io.apigee.build-tools.enterprise4g</groupId>
+                <groupId>com.apigee.edge.config</groupId>
                 <artifactId>apigee-edge-maven-plugin</artifactId>
-                <version>1.4.3</version>
+                <version>${apigee.deploy.plugin.version}</version>
                 <executions>
-                    <!-- Deploy SharedFlows FIRST -->
                     <execution>
-                        <id>deploy-sharedflows</id>
+                        <id>deploy-shared-flows</id>
                         <phase>install</phase>
                         <goals>
                             <goal>deploy</goal>
                         </goals>
                         <configuration>
+                            <bundleType>sharedflow</bundleType>
+                            <apiName>security-flow</apiName>
                             <options>update</options>
-                            <!-- Shared flow configuration goes here -->
                             <directory>${project.build.directory}/sharedflows</directory>
                         </configuration>
                     </execution>
-                    <!-- Deploy API Proxies SECOND -->
+                </executions>
+            </plugin>
+
+            <!-- Apigee Deploy Maven Plugin - for API Proxies -->
+            <plugin>
+                <groupId>com.apigee.edge.config</groupId>
+                <artifactId>apigee-edge-maven-plugin</artifactId>
+                <version>${apigee.deploy.plugin.version}</version>
+                <executions>
                     <execution>
-                        <id>deploy-proxies</id>
+                        <id>deploy-api-proxies</id>
                         <phase>install</phase>
                         <goals>
                             <goal>deploy</goal>
                         </goals>
                         <configuration>
+                            <bundleType>apiproxy</bundleType>
+                            <apiName>product-api</apiName>
                             <options>update</options>
-                            <!-- API proxy configuration goes here -->
                             <directory>${project.build.directory}/apiproxies</directory>
                         </configuration>
                     </execution>
                 </executions>
-                <!-- Common configuration for all executions -->
                 <configuration>
-                    <skip>false</skip>
-                    <options>update</options>
-                    <authType>oauth</authType> <!-- Use OAuth token -->
-                    <bearerToken>${apigee.token}</bearerToken>
-                    <org>${apigee.org}</org>
-                    <env>${apigee.env}</env>
-                    <apiVersion>v1</apiVersion>
+                    <authType>oauth</authType>
+                    <bearer>${apigee.bearer}</bearer>
+                    <apigeeOrg>${apigee.org}</apigeeOrg>
+                    <apigeeEnv>${apigee.env}</apigeeEnv>
                     <hostUrl>https://apigee.googleapis.com</hostUrl>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
+    <!-- Add Maven repositories -->
+    <repositories>
+        <repository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+        <repository>
+            <id>apigee-releases</id>
+            <name>Apigee Maven Repository</name>
+            <url>https://repository.sonatype.org/content/repositories/central</url>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </pluginRepository>
+        <pluginRepository>
+            <id>apigee-releases</id>
+            <name>Apigee Maven Repository</name>
+            <url>https://repository.sonatype.org/content/repositories/central</url>
+        </pluginRepository>
+    </pluginRepositories>
 </project>
