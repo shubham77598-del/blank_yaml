@@ -7,80 +7,120 @@ on:
       - 'designs/**'
 
 jobs:
-  build-deploy:
+  build:
     runs-on: ubuntu-latest
     environment: apigee
-
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: maven
 
-      - name: Write Service Account Key to file
-        # We need a file path for apigee-edge-maven-plugin's serviceAccountFile
-        run: |
-          echo "${{ secrets.APIGEE_SA_KEY }}" > sa.json
-          echo "APIGEE_SA_KEY_FILE=$PWD/sa.json" >> $GITHUB_ENV
-
-      - name: Build generator & run design parser
-        run: |
-          mvn -q -e -DskipTests compile exec:java -Dexec.mainClass="com.example.DesignParser"
-          echo "Generated bundles:"
-          find generated -maxdepth 4 -type f -name "*.xml" || true
-
-      - name: Deploy Shared Flows
-        run: |
-          if [ -d generated/sharedflows ]; then
-            for sf in generated/sharedflows/* ; do
-              if [ -d "$sf" ]; then
-                echo "::group::Deploy Shared Flow $(basename "$sf")"
-                (cd "$sf" && mvn -q -DskipTests install)
-                echo "::endgroup::"
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        version: 'latest'
+        
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.APIGEE_SA_KEY }}
+        
+    - name: Get Apigee access token
+      id: auth
+      run: |
+        ACCESS_TOKEN=$(gcloud auth print-access-token)
+        echo "token=${ACCESS_TOKEN}" >> $GITHUB_OUTPUT
+      
+    - name: Process YAML design files
+      run: |
+        mvn compile exec:java -Dexec.mainClass="com.example.DesignParser"
+      
+    - name: Deploy Shared Flows first
+      run: |
+        if [ -d "target/sharedflows" ]; then
+          echo "Checking for shared flows to deploy..."
+          FOUND_FLOWS=false
+          
+          for d in target/sharedflows/*/; do
+            if [ -d "$d" ]; then
+              FOUND_FLOWS=true
+              echo "Deploying shared flow: $(basename "$d")"
+              
+              cd "$d"
+              mvn clean install \
+                -Dapigee.org=${{ secrets.APIGEE_ORG }} \
+                -Dapigee.env=${{ secrets.APIGEE_ENV }} \
+                -Dapigee.username=x \
+                -Dapigee.password=x \
+                -Dbearer=${{ steps.auth.outputs.token }} \
+                -Dapigee.config.options=update
+              
+              RESULT=$?
+              if [ $RESULT -ne 0 ]; then
+                echo "Shared flow deployment failed, exiting"
+                exit $RESULT
               fi
-            done
-          else
-            echo "No sharedflows generated"
+              cd - > /dev/null
+            fi
+          done
+          
+          if [ "$FOUND_FLOWS" = false ]; then
+            echo "No shared flow directories found in target/sharedflows/"
           fi
-
-      - name: Deploy Proxies
-        run: |
-          if [ -d generated/proxies ]; then
-            for px in generated/proxies/* ; do
-              if [ -d "$px" ]; then
-                echo "::group::Deploy Proxy $(basename "$px")"
-                (cd "$px" && mvn -q -DskipTests install)
-                echo "::endgroup::"
+        else
+          echo "No shared flows directory found. Skipping shared flow deployment."
+        fi
+      
+    - name: Deploy API Proxies
+      if: success()
+      run: |
+        if [ -d "target/proxies" ]; then
+          echo "Checking for API proxies to deploy..."
+          FOUND_PROXIES=false
+          
+          for d in target/proxies/*/; do
+            if [ -d "$d" ]; then
+              FOUND_PROXIES=true
+              echo "Deploying proxy: $(basename "$d")"
+              
+              cd "$d"
+              mvn clean install \
+                -Dapigee.org=${{ secrets.APIGEE_ORG }} \
+                -Dapigee.env=${{ secrets.APIGEE_ENV }} \
+                -Dapigee.username=x \
+                -Dapigee.password=x \
+                -Dbearer=${{ steps.auth.outputs.token }} \
+                -Dapigee.config.options=update
+              
+              RESULT=$?
+              if [ $RESULT -ne 0 ]; then
+                echo "Proxy deployment failed"
+                exit $RESULT
               fi
-            done
-          else
-            echo "No proxies generated"
+              cd - > /dev/null
+            fi
+          done
+          
+          if [ "$FOUND_PROXIES" = false ]; then
+            echo "No proxy directories found in target/proxies/"
           fi
+        else
+          echo "No proxies directory found. Skipping proxy deployment."
+        fi
 
-      - name: (Optional) Commit generated bundles back
-        if: always()
-        env:
-          GIT_COMMIT_AUTHOR: "automation-bot"
-        run: |
-          if [ -n "$(git status --porcelain generated)" ]; then
-            git config user.name "$GIT_COMMIT_AUTHOR"
-            git config user.email "bot@users.noreply.github.com"
-            git add generated
-            git commit -m "chore: update generated Apigee bundles [ci skip]" || true
-            git push || echo "Non-fast-forward (race), skip push."
-          else
-            echo "No changes in generated/ to commit."
-          fi
-
-      - name: Upload bundles artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: apigee-bundles
-            # Upload only generated outputs (avoid full target noise)
-          path: generated/
+    - name: Upload artifacts
+      if: success() || failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: apigee-bundles
+        path: |
+          target/
+          !target/classes/
+          !target/generated-sources/
