@@ -7,16 +7,10 @@ sharedFlows:
         type: OAuthV2
         displayName: Validate OAuth Token
         configuration:
-          keyValueMapName: oauth-config
-          scopes:
-            - read
-            - write
+          operation: VerifyAccessToken
       - name: threat-protection
         type: JSONThreatProtection
         displayName: JSON Threat Protection
-        configuration:
-          maxStringLength: 500
-          maxArraySize: 100
     flows:
       - name: default
         request:
@@ -27,8 +21,6 @@ proxies:
   - name: product-api
     basePath: /v1/products
     description: Product API with shared flow for security
-    dependencies:
-      - sharedFlow: security-flow
     policies:
       - name: product-quota
         type: Quota
@@ -42,9 +34,9 @@ proxies:
         basePath: /v1/products
         flows:
           - name: product-flow
-            condition: true
+            condition: "true"
             request:
-              - sharedFlow: security-flow
+              - sharedFlow: security-flow # This will be converted to a FlowCallout policy
               - policy: product-quota
     targetEndpoints:
       - name: default

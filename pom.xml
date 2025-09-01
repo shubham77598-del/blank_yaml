@@ -5,43 +5,107 @@
     <groupId>com.example</groupId>
     <artifactId>apigee-design-automation</artifactId>
     <version>1.0-SNAPSHOT</version>
-    
+    <packaging>pom</packaging>
+
     <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Apigee Plugin Version -->
+        <apigee.config.plugin.version>2.5.1</apigee.config.plugin.version>
+        <!-- Apigee Credentials from GitHub Actions ENV -->
         <apigee.org>${env.APIGEE_ORG}</apigee.org>
         <apigee.env>${env.APIGEE_ENV}</apigee.env>
+        <apigee.token>${env.APIGEE_TOKEN}</apigee.token>
     </properties>
-    
+
     <dependencies>
+        <!-- SnakeYAML for parsing the design files -->
         <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
             <version>2.2</version>
         </dependency>
     </dependencies>
-    
+
     <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>3.2.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>com.apigee.edge.config</groupId>
+                    <artifactId>apigee-config-maven-plugin</artifactId>
+                    <version>${apigee.config.plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
         <plugins>
-            <!-- Exec Maven Plugin to run the parser -->
+            <!-- 1. Run the Java Parser to generate bundles from YAML -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version>
-                <configuration>
-                    <mainClass>com.example.DesignParser</mainClass>
-                </configuration>
+                <executions>
+                    <execution>
+                        <id>generate-bundles</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.example.DesignParser</mainClass>
+                            <cleanupDaemonThreads>false</cleanupDaemonThreads>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
-            
-            <!-- Maven Compiler Plugin -->
+
+            <!-- 2. Use the Apigee plugin to deploy the generated bundles -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <groupId>com.apigee.edge.config</groupId>
+                <artifactId>apigee-config-maven-plugin</artifactId>
+                <executions>
+                    <!-- Deploy SharedFlows FIRST -->
+                    <execution>
+                        <id>deploy-sharedflows</id>
+                        <phase>install</phase>
+                        <goals>
+                            <goal>sharedflows</goal>
+                        </goals>
+                        <configuration>
+                            <options>update</options>
+                            <sharedflow.dir>./target/sharedflows</sharedflow.dir>
+                        </configuration>
+                    </execution>
+                    <!-- Deploy API Proxies SECOND -->
+                    <execution>
+                        <id>deploy-proxies</id>
+                        <phase>install</phase>
+                        <goals>
+                            <goal>apiproxies</goal>
+                        </goals>
+                        <configuration>
+                            <options>update</options>
+                            <apiproxy.dir>./target/apiproxies</apiproxy.dir>
+                        </configuration>
+                    </execution>
+                </executions>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <org>${apigee.org}</org>
+                    <token>${apigee.token}</token>
+                    <apigee.config.options>update</apigee.config.options>
+                    <apigee.hosturl>https://apigee.googleapis.com</apigee.hosturl>
+                    <apigee.apiversion>v1</apigee.apiversion>
+                    <skip>false</skip>
                 </configuration>
             </plugin>
         </plugins>
