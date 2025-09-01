@@ -20,9 +20,6 @@ public class SharedFlowGenerator {
 
     /**
      * Generates an Apigee shared flow bundle based on YAML configuration.
-     * 
-     * @param sharedFlowConfig The shared flow configuration from YAML
-     * @param designName The name of the design (used for grouping)
      */
     public void generateSharedFlow(Map<String, Object> sharedFlowConfig, String designName) throws IOException {
         String name = (String) sharedFlowConfig.get("name");
@@ -63,6 +60,7 @@ public class SharedFlowGenerator {
      * Generates policy XML files.
      */
     private void generatePolicies(Path policiesPath, List<Map<String, Object>> policies) throws IOException {
+        // [Policy generation code remains the same]
         for (Map<String, Object> policy : policies) {
             String policyName = (String) policy.get("name");
             String policyType = (String) policy.get("type");
@@ -81,6 +79,7 @@ public class SharedFlowGenerator {
      * Generates policy XML content based on type and configuration.
      */
     private String generatePolicyXml(String policyName, String policyType, Map<String, Object> configuration) {
+        // [Policy XML generation code remains the same]
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
         
@@ -130,6 +129,7 @@ public class SharedFlowGenerator {
      * Generates the main shared flow XML file.
      */
     private void generateSharedFlowXml(Path sharedflowsPath, String name, Map<String, Object> sharedFlowConfig) throws IOException {
+        // [Shared flow XML generation code remains the same]
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
         xml.append("<SharedFlowBundle revision=\"1\" name=\"").append(name).append("\">\n");
@@ -187,22 +187,32 @@ public class SharedFlowGenerator {
         pom.append("        <apigee.config.dir>${project.basedir}</apigee.config.dir>\n");
         pom.append("    </properties>\n\n");
         
-        // Add build configuration with apigee-config-maven-plugin
+        // Add build configuration with maven-deploy-plugin for shared flows
         pom.append("    <build>\n");
         pom.append("        <plugins>\n");
         pom.append("            <plugin>\n");
-        pom.append("                <groupId>com.apigee.edge.config</groupId>\n");
-        pom.append("                <artifactId>apigee-config-maven-plugin</artifactId>\n");
-        pom.append("                <version>2.3.0</version>\n");
+        pom.append("                <groupId>io.apigee.build-tools.enterprise4g</groupId>\n");
+        pom.append("                <artifactId>apigee-edge-maven-plugin</artifactId>\n");
+        pom.append("                <version>1.2.1</version>\n");
         pom.append("                <executions>\n");
         pom.append("                    <execution>\n");
-        pom.append("                        <id>create-shared-flow</id>\n");
+        pom.append("                        <id>configure-bundle</id>\n");
+        pom.append("                        <phase>package</phase>\n");
+        pom.append("                        <goals>\n");
+        pom.append("                            <goal>configure</goal>\n");
+        pom.append("                        </goals>\n");
+        pom.append("                    </execution>\n");
+        pom.append("                    <execution>\n");
+        pom.append("                        <id>deploy-bundle</id>\n");
         pom.append("                        <phase>install</phase>\n");
         pom.append("                        <goals>\n");
-        pom.append("                            <goal>sharedflows</goal>\n");
+        pom.append("                            <goal>deploy</goal>\n");
         pom.append("                        </goals>\n");
         pom.append("                    </execution>\n");
         pom.append("                </executions>\n");
+        pom.append("                <configuration>\n");
+        pom.append("                    <bundleType>sharedflow</bundleType>\n");
+        pom.append("                </configuration>\n");
         pom.append("            </plugin>\n");
         pom.append("        </plugins>\n");
         pom.append("    </build>\n");

@@ -9,7 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Specify the environment to use the environment secrets
     environment: apigee
     
     steps:
@@ -23,31 +22,26 @@ jobs:
         distribution: 'temurin'
         cache: maven
 
-    # Set up Google Cloud SDK
     - name: Set up Google Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
         version: 'latest'
         
-    # Authentication step with explicit credentials_json
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.APIGEE_SA_KEY }}
         
-    # Get the Apigee access token
     - name: Get Apigee access token
       id: auth
       run: |
         ACCESS_TOKEN=$(gcloud auth print-access-token)
         echo "token=${ACCESS_TOKEN}" >> $GITHUB_OUTPUT
       
-    # Process YAML design files
     - name: Process YAML design files
       run: |
         mvn compile exec:java -Dexec.mainClass="com.example.DesignParser"
       
-    # Deploy shared flows first
     - name: Deploy Shared Flows first
       run: |
         if [ -d "target/sharedflows" ]; then
@@ -60,10 +54,13 @@ jobs:
               echo "Deploying shared flow: $(basename "$d")"
               
               cd "$d"
-              mvn clean install -Papigee-deploy \
+              mvn clean install \
                 -Dapigee.org=${{ secrets.APIGEE_ORG }} \
                 -Dapigee.env=${{ secrets.APIGEE_ENV }} \
-                -Dbearer=${{ steps.auth.outputs.token }}
+                -Dapigee.username=x \
+                -Dapigee.password=x \
+                -Dbearer=${{ steps.auth.outputs.token }} \
+                -Dapigee.config.options=update
               
               RESULT=$?
               if [ $RESULT -ne 0 ]; then
@@ -81,7 +78,6 @@ jobs:
           echo "No shared flows directory found. Skipping shared flow deployment."
         fi
       
-    # Then deploy proxies
     - name: Deploy API Proxies
       if: success()
       run: |
@@ -95,10 +91,13 @@ jobs:
               echo "Deploying proxy: $(basename "$d")"
               
               cd "$d"
-              mvn clean install -Papigee-deploy \
+              mvn clean install \
                 -Dapigee.org=${{ secrets.APIGEE_ORG }} \
                 -Dapigee.env=${{ secrets.APIGEE_ENV }} \
-                -Dbearer=${{ steps.auth.outputs.token }}
+                -Dapigee.username=x \
+                -Dapigee.password=x \
+                -Dbearer=${{ steps.auth.outputs.token }} \
+                -Dapigee.config.options=update
               
               RESULT=$?
               if [ $RESULT -ne 0 ]; then
@@ -116,7 +115,6 @@ jobs:
           echo "No proxies directory found. Skipping proxy deployment."
         fi
 
-    # Upload generated artifacts
     - name: Upload artifacts
       if: success() || failure()
       uses: actions/upload-artifact@v4
