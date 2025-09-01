@@ -21,23 +21,31 @@ jobs:
         distribution: 'temurin'
         cache: maven
 
+    # Set up Google Cloud SDK (just installation)
     - name: Set up Google Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        service_account_key: ${{ secrets.APIGEE_SA_KEY }}
-        export_default_credentials: true
-
+        version: 'latest'
+        
+    # Authentication step - separate from setup
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.APIGEE_SA_KEY }}
+        
+    # Get the Apigee access token
     - name: Get Apigee access token
       id: auth
       run: |
         ACCESS_TOKEN=$(gcloud auth print-access-token)
         echo "token=${ACCESS_TOKEN}" >> $GITHUB_OUTPUT
       
+    # Process YAML design files
     - name: Process YAML design files
       run: |
         mvn compile exec:java -Dexec.mainClass="com.example.DesignParser"
       
+    # Deploy shared flows first (as required)
     - name: Deploy Shared Flows first
       run: |
         if [ -d "target/sharedflows" ]; then
@@ -47,8 +55,9 @@ jobs:
           for d in target/sharedflows/*/; do
             if [ -d "$d" ]; then
               FOUND_FLOWS=true
-              cd "$d"
               echo "Deploying shared flow: $(basename "$d")"
+              
+              cd "$d"
               mvn clean install -Papigee-deploy \
                 -Dapigee.org=${{ secrets.APIGEE_ORG }} \
                 -Dapigee.env=${{ secrets.APIGEE_ENV }} \
@@ -70,6 +79,7 @@ jobs:
           echo "No shared flows directory found. Skipping shared flow deployment."
         fi
       
+    # Then deploy proxies (only if shared flows succeeded)
     - name: Deploy API Proxies
       if: success()
       run: |
@@ -80,8 +90,9 @@ jobs:
           for d in target/proxies/*/; do
             if [ -d "$d" ]; then
               FOUND_PROXIES=true
-              cd "$d"
               echo "Deploying proxy: $(basename "$d")"
+              
+              cd "$d"
               mvn clean install -Papigee-deploy \
                 -Dapigee.org=${{ secrets.APIGEE_ORG }} \
                 -Dapigee.env=${{ secrets.APIGEE_ENV }} \
@@ -103,9 +114,13 @@ jobs:
           echo "No proxies directory found. Skipping proxy deployment."
         fi
 
+    # Upload generated artifacts for inspection (even if deployment fails)
     - name: Upload artifacts
       if: success() || failure()
       uses: actions/upload-artifact@v4
       with:
         name: apigee-bundles
-        path: target/
+        path: |
+          target/
+          !target/classes/
+          !target/generated-sources/
