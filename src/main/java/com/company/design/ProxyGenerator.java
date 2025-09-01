@@ -2,8 +2,7 @@ package com.company.design;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ProxyGenerator {
 
@@ -14,165 +13,212 @@ public class ProxyGenerator {
     }
 
     public void generateProxy(Map<String, Object> proxyConfig, String designName) throws IOException {
-        String name = (String) proxyConfig.get("name");
-        if (name == null || name.isBlank()) {
+        String name = str(proxyConfig.get("name"));
+        if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Proxy missing name");
         }
-        System.out.println("Generating proxy: " + name);
+        System.out.println("  Generating proxy: " + name);
 
         String dir = outputDir + "/" + name;
         Path apiproxy = Paths.get(dir, "apiproxy");
         Path policiesPath = apiproxy.resolve("policies");
         Path proxiesPath = apiproxy.resolve("proxies");
         Path targetsPath = apiproxy.resolve("targets");
-
         Files.createDirectories(policiesPath);
         Files.createDirectories(proxiesPath);
         Files.createDirectories(targetsPath);
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> policies =
-                (List<Map<String, Object>>) proxyConfig.getOrDefault("policies", List.of());
-        for (Map<String, Object> p : policies) {
-            String pName = (String) p.get("name");
-            String pType = (String) p.get("type");
-            @SuppressWarnings("unchecked")
-            Map<String, Object> cfg = (Map<String, Object>) p.getOrDefault("configuration", Map.of());
-            Files.writeString(policiesPath.resolve(pName + ".xml"), renderPolicy(pName, pType, cfg));
+        List<Map<String, Object>> policies = asList(proxyConfig.get("policies"));
+
+        for (int i = 0; i < policies.size(); i++) {
+            Map<String, Object> p = policies.get(i);
+            String pName = str(p.get("name"));
+            if (pName == null) continue;
+            String pType = str(p.get("type"));
+            Map<String, Object> cfg = asMap(p.get("configuration"));
+            Files.write(policiesPath.resolve(pName + ".xml"), renderPolicy(pName, pType, cfg).getBytes("UTF-8"));
         }
 
-        Files.writeString(proxiesPath.resolve("default.xml"),
-                renderProxyEndpoint(name, proxyConfig));
-        Files.writeString(targetsPath.resolve("default.xml"),
-                renderTargetEndpoint(proxyConfig));
-        Files.writeString(apiproxy.resolve(name + ".xml"),
-                renderProxyDescriptor(name, proxyConfig));
-        Files.writeString(Paths.get(dir, "pom.xml"),
-                renderPom(designName, name));
+        Files.write(proxiesPath.resolve("default.xml"), renderProxyEndpoint(name, proxyConfig).getBytes("UTF-8"));
+        Files.write(targetsPath.resolve("default.xml"), renderTargetEndpoint(proxyConfig).getBytes("UTF-8"));
+        Files.write(apiproxy.resolve(name + ".xml"), renderProxyDescriptor(name, proxyConfig).getBytes("UTF-8"));
 
-        System.out.println("Proxy bundle generated: " + name);
+        String pom = buildPom(designName, name);
+        Files.write(Paths.get(dir, "pom.xml"), pom.getBytes("UTF-8"));
     }
 
     private String renderPolicy(String name, String type, Map<String, Object> cfg) {
-        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        switch (type) {
-            case "Quota" -> sb.append("<Quota name=\"").append(name).append("\">\n")
-                    .append("  <DisplayName>").append(name).append("</DisplayName>\n")
-                    .append("  <Allow count=\"").append(cfg.getOrDefault("limit", 1000)).append("\"/>\n")
-                    .append("  <Interval>1</Interval>\n")
-                    .append("  <TimeUnit>").append(cfg.getOrDefault("timeUnit", "minute")).append("</TimeUnit>\n")
-                    .append("</Quota>\n");
-            default -> sb.append("<Policy name=\"").append(name).append("\">\n")
-                    .append("  <DisplayName>").append(name).append("</DisplayName>\n")
-                    .append("</Policy>\n");
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        if ("Quota".equals(type)) {
+            String limit = str(cfg.get("limit"));
+            if (limit == null) limit = "1000";
+            String timeUnit = str(cfg.get("timeUnit"));
+            if (timeUnit == null) timeUnit = "minute";
+            sb.append("<Quota name=\"").append(name).append("\">\n");
+            sb.append("  <DisplayName>").append(name).append("</DisplayName>\n");
+            sb.append("  <Allow count=\"").append(limit).append("\"/>\n");
+            sb.append("  <Interval>1</Interval>\n");
+            sb.append("  <TimeUnit>").append(timeUnit).append("</TimeUnit>\n");
+            sb.append("</Quota>\n");
+        } else {
+            sb.append("<Policy name=\"").append(name).append("\">\n");
+            sb.append("  <DisplayName>").append(name).append("</DisplayName>\n");
+            sb.append("</Policy>\n");
         }
         return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
     private String renderProxyEndpoint(String proxyName, Map<String, Object> proxyConfig) {
-        String basePath = (String) proxyConfig.getOrDefault("basePath", "/" + proxyName);
-        List<Map<String, Object>> flows = (List<Map<String, Object>>) proxyConfig.getOrDefault("flows", List.of());
-        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        sb.append("<ProxyEndpoint name=\"default\">\n")
-          .append("  <PreFlow name=\"PreFlow\"><Request/><Response/></PreFlow>\n");
-        for (Map<String, Object> f : flows) {
-            String fname = (String) f.getOrDefault("name", "default");
-            String condition = String.valueOf(f.getOrDefault("condition", "true"));
-            sb.append("  <Flow name=\"").append(fname).append("\">\n")
-              .append("    <Condition>").append(condition).append("</Condition>\n")
-              .append("    <Request>\n");
-            List<Map<String, Object>> rq = (List<Map<String, Object>>) f.getOrDefault("request", List.of());
-            for (Map<String, Object> step : rq) {
-                sb.append("      <Step><Name>").append(step.get("policy")).append("</Name></Step>\n");
+        String basePath = str(proxyConfig.get("basePath"));
+        if (basePath == null) basePath = "/" + proxyName;
+        List<Map<String, Object>> flows = asList(proxyConfig.get("flows"));
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<ProxyEndpoint name=\"default\">\n");
+        sb.append("  <PreFlow name=\"PreFlow\"><Request/><Response/></PreFlow>\n");
+        for (int i = 0; i < flows.size(); i++) {
+            Map<String, Object> f = flows.get(i);
+            String fname = str(f.get("name"));
+            if (fname == null) fname = "flow" + (i + 1);
+            String condition = str(f.get("condition"));
+            if (condition == null) condition = "true";
+            sb.append("  <Flow name=\"").append(fname).append("\">\n");
+            sb.append("    <Condition>").append(condition).append("</Condition>\n");
+            sb.append("    <Request>\n");
+            List<Map<String, Object>> rq = asList(f.get("request"));
+            for (int j = 0; j < rq.size(); j++) {
+                Map<String, Object> step = rq.get(j);
+                String policyRef = str(step.get("policy"));
+                if (policyRef != null) {
+                    sb.append("      <Step><Name>").append(policyRef).append("</Name></Step>\n");
+                }
             }
-            sb.append("    </Request>\n")
-              .append("    <Response/>\n")
-              .append("  </Flow>\n");
+            sb.append("    </Request>\n");
+            sb.append("    <Response/>\n");
+            sb.append("  </Flow>\n");
         }
-        sb.append("  <PostFlow name=\"PostFlow\"><Request/><Response/></PostFlow>\n")
-          .append("  <HTTPProxyConnection>\n")
-          .append("    <BasePath>").append(basePath).append("</BasePath>\n")
-          .append("  </HTTPProxyConnection>\n")
-          .append("  <RouteRule name=\"default\"><TargetEndpoint>default</TargetEndpoint></RouteRule>\n")
-          .append("</ProxyEndpoint>\n");
+        sb.append("  <PostFlow name=\"PostFlow\"><Request/><Response/></PostFlow>\n");
+        sb.append("  <HTTPProxyConnection>\n");
+        sb.append("    <BasePath>").append(basePath).append("</BasePath>\n");
+        sb.append("  </HTTPProxyConnection>\n");
+        sb.append("  <RouteRule name=\"default\"><TargetEndpoint>default</TargetEndpoint></RouteRule>\n");
+        sb.append("</ProxyEndpoint>\n");
         return sb.toString();
     }
 
     private String renderTargetEndpoint(Map<String, Object> proxyConfig) {
-        String target = (String) proxyConfig.getOrDefault("target", "https://mocktarget.apigee.net");
-        return """
-               <?xml version="1.0" encoding="UTF-8"?>
-               <TargetEndpoint name="default">
-                 <PreFlow name="PreFlow"><Request/><Response/></PreFlow>
-                 <PostFlow name="PostFlow"><Request/><Response/></PostFlow>
-                 <HTTPTargetConnection>
-                   <URL>%s</URL>
-                 </HTTPTargetConnection>
-               </TargetEndpoint>
-               """.formatted(target);
-    }
-
-    @SuppressWarnings("unchecked")
-    private String renderProxyDescriptor(String name, Map<String, Object> proxyConfig) {
-        String desc = (String) proxyConfig.getOrDefault("description", "");
-        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        sb.append("<APIProxy name=\"").append(name).append("\" revision=\"1\">\n");
-        if (!desc.isBlank()) {
-            sb.append("  <Description>").append(desc).append("</Description>\n");
-        }
-        Map<String, Object> dependsOn = (Map<String, Object>) proxyConfig.getOrDefault("dependsOn", Map.of());
-        List<String> sfs = (List<String>) dependsOn.getOrDefault("sharedFlows", List.of());
-        for (String sf : sfs) {
-            sb.append("  <DependsOn>sf:").append(sf).append("</DependsOn>\n");
-        }
-        sb.append("  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>\n")
-          .append("  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>\n")
-          .append("</APIProxy>\n");
+        String target = str(proxyConfig.get("target"));
+        if (target == null) target = "https://mocktarget.apigee.net";
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<TargetEndpoint name=\"default\">\n");
+        sb.append("  <PreFlow name=\"PreFlow\"><Request/><Response/></PreFlow>\n");
+        sb.append("  <PostFlow name=\"PostFlow\"><Request/><Response/></PostFlow>\n");
+        sb.append("  <HTTPTargetConnection>\n");
+        sb.append("    <URL>").append(target).append("</URL>\n");
+        sb.append("  </HTTPTargetConnection>\n");
+        sb.append("</TargetEndpoint>\n");
         return sb.toString();
     }
 
-    private String renderPom(String designName, String name) {
-        return """
-               <?xml version="1.0" encoding="UTF-8"?>
-               <project xmlns="http://maven.apache.org/POM/4.0.0"
-                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-                 <modelVersion>4.0.0</modelVersion>
-                 <groupId>com.apigee.edge.proxy.%s</groupId>
-                 <artifactId>%s</artifactId>
-                 <version>1.0</version>
-                 <packaging>pom</packaging>
-                 <build>
-                   <plugins>
-                     <plugin>
-                       <groupId>io.apigee.build-tools.enterprise4g</groupId>
-                       <artifactId>apigee-edge-maven-plugin</artifactId>
-                       <version>1.2.1</version>
-                       <executions>
-                         <execution>
-                           <id>configure</id>
-                           <phase>package</phase>
-                           <goals><goal>configure</goal></goals>
-                         </execution>
-                         <execution>
-                           <id>deploy</id>
-                           <phase>install</phase>
-                           <goals><goal>deploy</goal></goals>
-                         </execution>
-                       </executions>
-                       <configuration>
-                         <org>${apigee.org}</org>
-                         <env>${apigee.env}</env>
-                         <bundleType>apiproxy</bundleType>
-                         <cleanDeployment>true</cleanDeployment>
-                         <override>true</override>
-                         <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>
-                       </configuration>
-                     </plugin>
-                   </plugins>
-                 </build>
-               </project>
-               """.formatted(designName, name);
+    private String renderProxyDescriptor(String name, Map<String, Object> proxyConfig) {
+        String desc = str(proxyConfig.get("description"));
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<APIProxy name=\"").append(name).append("\" revision=\"1\">\n");
+        if (desc != null && !desc.trim().isEmpty()) {
+            sb.append("  <Description>").append(desc).append("</Description>\n");
+        }
+        Map<String, Object> dependsOn = asMap(proxyConfig.get("dependsOn"));
+        List<String> sharedRefs = dependsOn.containsKey("sharedFlows")
+                ? listOfStrings(dependsOn.get("sharedFlows"))
+                : new ArrayList<String>();
+        for (int i = 0; i < sharedRefs.size(); i++) {
+            sb.append("  <DependsOn>sf:").append(sharedRefs.get(i)).append("</DependsOn>\n");
+        }
+        sb.append("  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>\n");
+        sb.append("  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>\n");
+        sb.append("</APIProxy>\n");
+        return sb.toString();
+    }
+
+    private String buildPom(String designName, String name) {
+        String group = (designName == null || designName.trim().isEmpty())
+                ? "com.apigee.proxy"
+                : "com.apigee.proxy." + designName;
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\" ")
+          .append("xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ")
+          .append("xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 ")
+          .append("http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n");
+        sb.append("  <modelVersion>4.0.0</modelVersion>\n");
+        sb.append("  <groupId>").append(group).append("</groupId>\n");
+        sb.append("  <artifactId>").append(name).append("</artifactId>\n");
+        sb.append("  <version>1.0</version>\n");
+        sb.append("  <packaging>pom</packaging>\n");
+        sb.append("  <build>\n");
+        sb.append("    <plugins>\n");
+        sb.append("      <plugin>\n");
+        sb.append("        <groupId>io.apigee.build-tools.enterprise4g</groupId>\n");
+        sb.append("        <artifactId>apigee-edge-maven-plugin</artifactId>\n");
+        sb.append("        <version>1.2.1</version>\n");
+        sb.append("        <executions>\n");
+        sb.append("          <execution>\n");
+        sb.append("            <id>configure</id>\n");
+        sb.append("            <phase>package</phase>\n");
+        sb.append("            <goals><goal>configure</goal></goals>\n");
+        sb.append("          </execution>\n");
+        sb.append("          <execution>\n");
+        sb.append("            <id>deploy</id>\n");
+        sb.append("            <phase>install</phase>\n");
+        sb.append("            <goals><goal>deploy</goal></goals>\n");
+        sb.append("          </execution>\n");
+        sb.append("        </executions>\n");
+        sb.append("        <configuration>\n");
+        sb.append("          <org>${apigee.org}</org>\n");
+        sb.append("          <env>${apigee.env}</env>\n");
+        sb.append("          <bundleType>apiproxy</bundleType>\n");
+        sb.append("          <cleanDeployment>true</cleanDeployment>\n");
+        sb.append("          <override>true</override>\n");
+        sb.append("          <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>\n");
+        sb.append("        </configuration>\n");
+        sb.append("      </plugin>\n");
+        sb.append("    </plugins>\n");
+        sb.append("  </build>\n");
+        sb.append("</project>\n");
+        return sb.toString();
+    }
+
+    private List<Map<String, Object>> asList(Object o) {
+        if (o instanceof List) {
+            return (List<Map<String, Object>>) o;
+        }
+        return new ArrayList<Map<String, Object>>();
+    }
+
+    private Map<String, Object> asMap(Object o) {
+        if (o instanceof Map) {
+            return (Map<String, Object>) o;
+        }
+        return new HashMap<String, Object>();
+    }
+
+    private List<String> listOfStrings(Object o) {
+        List<String> result = new ArrayList<String>();
+        if (o instanceof List) {
+            List raw = (List) o;
+            for (int i = 0; i < raw.size(); i++) {
+                Object item = raw.get(i);
+                if (item != null) result.add(String.valueOf(item));
+            }
+        }
+        return result;
+    }
+
+    private String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 }

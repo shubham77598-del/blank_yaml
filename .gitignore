@@ -1,12 +1,12 @@
-# Build / IDE
+# Build
 target/
-generated/**/target/
-*.iml
-*.ipr
-*.iws
+# IDE
 .idea/
-.vscode/
-.DS_Store
-
-# Service account file
+*.iml
+.classpath
+.project
+.settings/
+# Generated
+generated/
+# Secrets
 sa.json

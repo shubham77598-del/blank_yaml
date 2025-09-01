@@ -1,19 +1,19 @@
 apigee:
-  name: sample-design
-  version: "1.0"
-
+  name: sample
   sharedFlows:
     - name: common-logging
-      description: "Shared flow for logging."
       policies:
+        - name: Verify-API-Key
+          type: VerifyAPIKey
+          configuration:
+            keyLocation: request.header.x-api-key
         - name: LogPolicy
           type: MessageLogging
           configuration:
             logLevel: DEBUG
-
   proxies:
     - name: sample-api
-      description: "Sample API Proxy"
+      description: "Sample API"
       basePath: /v1/sample
       target: https://mocktarget.apigee.net
       dependsOn:
@@ -29,12 +29,12 @@ apigee:
         - name: default
           condition: true
           request:
+            - policy: Verify-API-Key
             - policy: LogPolicy
             - policy: QuotaPolicy
-
   apiProducts:
     - name: SampleProduct
-      displayName: "Sample Product"
+      displayName: Sample Product
       approvalType: AUTO
       proxies:
         - sample-api
@@ -44,5 +44,3 @@ apigee:
         limit: 1000
         interval: 1
         timeUnit: minute
-      attributes:
-        access: public

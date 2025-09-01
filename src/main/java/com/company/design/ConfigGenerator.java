@@ -4,94 +4,74 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
-/**
- * Generates configuration entity JSON for apigee-config-maven-plugin.
- * Currently supports: API Products (extend as needed).
- */
 public class ConfigGenerator {
 
-    public static void generateApiProducts(List<Map<String, Object>> products, String outDir) throws IOException {
-        Path dir = Paths.get(outDir);
+    public static void generateApiProducts(List<Map<String, Object>> products, String entitiesDir) throws IOException {
+        Path dir = Paths.get(entitiesDir);
         Files.createDirectories(dir);
-        for (Map<String, Object> product : products) {
-            String name = (String) product.get("name");
-            if (name == null || name.isBlank()) continue;
-
+        for (int i = 0; i < products.size(); i++) {
+            Map<String, Object> product = products.get(i);
+            String name = val(product.get("name"));
+            if (name == null || name.trim().isEmpty()) continue;
             String json = buildApiProductJson(product);
-            Files.writeString(dir.resolve(name + ".json"), json);
+            Files.write(dir.resolve(name + ".json"), json.getBytes("UTF-8"));
         }
-        // Ensure config module POM exists
         createConfigPomIfMissing("generated/config");
     }
 
     private static String buildApiProductJson(Map<String, Object> product) {
-        // Minimal JSON; you can enrich mapping as needed
-        String name = (String) product.get("name");
-        String displayName = (String) product.getOrDefault("displayName", name);
-        String approvalType = String.valueOf(product.getOrDefault("approvalType", "AUTO"));
-        @SuppressWarnings("unchecked")
-        List<String> proxies = (List<String>) product.getOrDefault("proxies", List.of());
-        @SuppressWarnings("unchecked")
-        List<String> envs = (List<String>) product.getOrDefault("environments", List.of());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> quota = (Map<String, Object>) product.getOrDefault("quota", Map.of());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> attributes = (Map<String, Object>) product.getOrDefault("attributes", Map.of());
+        String name = val(product.get("name"));
+        String displayName = val(product.get("displayName"));
+        if (displayName == null) displayName = name;
+        String approvalType = val(product.get("approvalType"));
+        if (approvalType == null) approvalType = "AUTO";
+
+        List<String> proxies = listOf(product.get("proxies"));
+        List<String> envs = listOf(product.get("environments"));
+
+        Map<String, Object> quota = mapOf(product.get("quota"));
 
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
-        sb.append("  \"name\": \"").append(name).append("\",\n");
-        sb.append("  \"displayName\": \"").append(displayName).append("\",\n");
-        sb.append("  \"approvalType\": \"").append(approvalType).append("\",\n");
-        sb.append("  \"proxies\": ").append(asJsonArray(proxies)).append(",\n");
-        sb.append("  \"environments\": ").append(asJsonArray(envs)).append(",\n");
+        appendJsonField(sb, "name", name, true);
+        appendJsonField(sb, "displayName", displayName, true);
+        appendJsonField(sb, "approvalType", approvalType, true);
+        appendJsonArray(sb, "proxies", proxies, true);
+        appendJsonArray(sb, "environments", envs, true);
 
         if (!quota.isEmpty()) {
-            sb.append("  \"quota\": \"").append(quota.getOrDefault("limit", 1000)).append("\",\n");
-            sb.append("  \"quotaInterval\": \"").append(quota.getOrDefault("interval", 1)).append("\",\n");
-            sb.append("  \"quotaTimeUnit\": \"").append(quota.getOrDefault("timeUnit", "minute")).append("\",\n");
+            appendJsonField(sb, "quota", String.valueOf(quota.get("limit") == null ? 1000 : quota.get("limit")), true);
+            appendJsonField(sb, "quotaInterval", String.valueOf(quota.get("interval") == null ? 1 : quota.get("interval")), true);
+            appendJsonField(sb, "quotaTimeUnit", String.valueOf(quota.get("timeUnit") == null ? "minute" : quota.get("timeUnit")), true);
         }
 
-        if (!attributes.isEmpty()) {
-            sb.append("  \"attributes\": [\n");
-            int i = 0;
-            for (Map.Entry<String, Object> e : attributes.entrySet()) {
-                sb.append("    {\"name\": \"").append(e.getKey()).append("\", \"value\": \"")
-                  .append(String.valueOf(e.getValue())).append("\"}");
-                if (i < attributes.size() - 1) sb.append(",");
-                sb.append("\n");
-                i++;
-            }
-            sb.append("  ]\n");
-        } else {
-            // Remove trailing comma if attributes not present; simple approach
-            if (sb.charAt(sb.length() - 2) == ',') {
-                // Not handling an exhaustive cleanup; safe path is simpler: ensure last line replaced, but for brevity we keep it simple
-            }
-            sb.append("  \"attributes\": []\n");
-        }
-
+        // attributes empty
+        sb.append("  \"attributes\": []\n");
         sb.append("}\n");
         return sb.toString();
     }
 
-    private static String asJsonArray(List<String> items) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < items.size(); i++) {
-            sb.append("\"").append(items.get(i)).append("\"");
-            if (i < items.size() - 1) sb.append(", ");
+    private static void appendJsonField(StringBuilder sb, String key, String value, boolean comma) {
+        sb.append("  \"").append(key).append("\": \"").append(value).append("\"");
+        if (comma) sb.append(",");
+        sb.append("\n");
+    }
+
+    private static void appendJsonArray(StringBuilder sb, String key, List<String> values, boolean comma) {
+        sb.append("  \"").append(key).append("\": [");
+        for (int i = 0; i < values.size(); i++) {
+            sb.append("\"").append(values.get(i)).append("\"");
+            if (i < values.size() - 1) sb.append(", ");
         }
         sb.append("]");
-        return sb.toString();
+        if (comma) sb.append(",");
+        sb.append("\n");
     }
 
     public static void finalizeConfigModule(String configRoot) throws IOException {
-        Path pom = Paths.get(configRoot, "pom.xml");
-        if (!Files.exists(pom)) {
-            // Only create if entities folder exists & not empty
-            Path entities = Paths.get(configRoot, "entities");
-            if (!Files.exists(entities)) return;
-            if (Files.list(entities).findAny().isEmpty()) return;
+        Path entities = Paths.get(configRoot, "entities");
+        if (!Files.exists(entities)) return;
+        if (Files.list(entities).findAny().isPresent()) {
             createConfigPomIfMissing(configRoot);
         }
     }
@@ -100,42 +80,62 @@ public class ConfigGenerator {
         Path pom = Paths.get(configRoot, "pom.xml");
         if (Files.exists(pom)) return;
 
-        String pomContent = """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <project xmlns="http://maven.apache.org/POM/4.0.0"
-                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>com.apigee.edge.config</groupId>
-                  <artifactId>apigee-config-entities</artifactId>
-                  <version>1.0</version>
-                  <packaging>pom</packaging>
-                  <build>
-                    <plugins>
-                      <plugin>
-                        <groupId>com.apigee.edge.config</groupId>
-                        <artifactId>apigee-config-maven-plugin</artifactId>
-                        <version>2.3.0</version>
-                        <executions>
-                          <execution>
-                            <id>apiproducts</id>
-                            <phase>install</phase>
-                            <goals>
-                              <goal>apiproducts</goal>
-                            </goals>
-                          </execution>
-                        </executions>
-                        <configuration>
-                          <org>${env.APIGEE_ORG}</org>
-                          <env>${env.APIGEE_ENV}</env>
-                          <apigee.config.dir>${project.basedir}/entities</apigee.config.dir>
-                          <apigee.config.options>update</apigee.config.options>
-                        </configuration>
-                      </plugin>
-                    </plugins>
-                  </build>
-                </project>
-                """;
-        Files.writeString(pom, pomContent);
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\" ")
+          .append("xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ")
+          .append("xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 ")
+          .append("http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n");
+        sb.append("  <modelVersion>4.0.0</modelVersion>\n");
+        sb.append("  <groupId>com.apigee.config</groupId>\n");
+        sb.append("  <artifactId>apigee-config-entities</artifactId>\n");
+        sb.append("  <version>1.0</version>\n");
+        sb.append("  <packaging>pom</packaging>\n");
+        sb.append("  <build>\n");
+        sb.append("    <plugins>\n");
+        sb.append("      <plugin>\n");
+        sb.append("        <groupId>com.apigee.edge.config</groupId>\n");
+        sb.append("        <artifactId>apigee-config-maven-plugin</artifactId>\n");
+        sb.append("        <version>2.3.0</version>\n");
+        sb.append("        <executions>\n");
+        sb.append("          <execution>\n");
+        sb.append("            <id>apiproducts</id>\n");
+        sb.append("            <phase>install</phase>\n");
+        sb.append("            <goals><goal>apiproducts</goal></goals>\n");
+        sb.append("          </execution>\n");
+        sb.append("        </executions>\n");
+        sb.append("        <configuration>\n");
+        sb.append("          <org>${apigee.org}</org>\n");
+        sb.append("          <env>${apigee.env}</env>\n");
+        sb.append("          <apigee.config.dir>${project.basedir}/entities</apigee.config.dir>\n");
+        sb.append("          <apigee.config.options>update</apigee.config.options>\n");
+        sb.append("          <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>\n");
+        sb.append("        </configuration>\n");
+        sb.append("      </plugin>\n");
+        sb.append("    </plugins>\n");
+        sb.append("  </build>\n");
+        sb.append("</project>\n");
+
+        Files.createDirectories(Paths.get(configRoot));
+        Files.write(pom, sb.toString().getBytes("UTF-8"));
+    }
+
+    private static String val(Object o) { return o == null ? null : String.valueOf(o); }
+
+    private static List<String> listOf(Object o) {
+        List<String> r = new ArrayList<String>();
+        if (o instanceof List) {
+            List raw = (List) o;
+            for (int i = 0; i < raw.size(); i++) {
+                Object item = raw.get(i);
+                if (item != null) r.add(String.valueOf(item));
+            }
+        }
+        return r;
+    }
+
+    private static Map<String, Object> mapOf(Object o) {
+        if (o instanceof Map) return (Map<String, Object>) o;
+        return new HashMap<String, Object>();
     }
 }

@@ -1,4 +1,4 @@
-name: Apigee Design Deploy
+name: Apigee Deploy
 
 on:
   push:
@@ -12,62 +12,64 @@ jobs:
     environment: apigee
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up JDK 8
         uses: actions/setup-java@v3
         with:
           java-version: 8
           distribution: temurin
           cache: maven
-
       - name: Write Service Account Key
         run: |
           echo "${{ secrets.APIGEE_SA_KEY }}" > sa.json
           echo "APIGEE_SA_KEY_FILE=$PWD/sa.json" >> $GITHUB_ENV
-
-      - name: Run Design Generator
+      - name: Generate Bundles
         run: |
-          mvn -q -DskipTests compile exec:java -Dexec.mainClass="com.apigee.designparser.DesignParser"
-          echo "Generated structure:"
-          find generated -maxdepth 5 -type f -name "*.xml" || true
-
+          mvn -q -DskipTests compile exec:java -Dexec.mainClass="com.company.design.DesignParser"
+          echo "Generated:"
+          find generated -type f -maxdepth 6 -name "*.xml" -o -name "*.json" || true
       - name: Deploy Shared Flows
         run: |
-          if [ -d generated/sharedFlows ]; then
-            for sf in generated/sharedFlows/* ; do
-              [ -d "$sf" ] || continue
-              echo "::group::Deploy Shared Flow $(basename "$sf")"
-              (cd "$sf" && mvn -q -DskipTests install \
-                -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
-                -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
-                -DserviceAccountFile="$PWD/sa.json")
+          if [ -d generated/sharedflows ]; then
+            for d in generated/sharedflows/*; do
+              [ -d "$d" ] || continue
+              echo "::group::SF $(basename "$d")"
+              (cd "$d" && mvn -q -DskipTests install \
+                 -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
+                 -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
+                 -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
               echo "::endgroup::"
             done
           else
-            echo "No shared flows generated"
+            echo "No sharedflows"
           fi
-
       - name: Deploy Proxies
         run: |
           if [ -d generated/proxies ]; then
-            for px in generated/proxies/* ; do
-              [ -d "$px" ] || continue
-              echo "::group::Deploy Proxy $(basename "$px")"
-              (cd "$px" && mvn -q -DskipTests install \
-                -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
-                -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
-                -DserviceAccountFile="$PWD/sa.json")
+            for d in generated/proxies/*; do
+              [ -d "$d" ] || continue
+              echo "::group::Proxy $(basename "$d")"
+              (cd "$d" && mvn -q -DskipTests install \
+                 -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
+                 -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
+                 -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
               echo "::endgroup::"
             done
           else
-            echo "No proxies generated"
+            echo "No proxies"
           fi
-
-      - name: Upload Generated Bundles
+      - name: Deploy Config (API Products)
+        run: |
+          if [ -f generated/config/pom.xml ]; then
+            (cd generated/config && mvn -q -DskipTests install \
+               -Dapigee.org="${{ secrets.APIGEE_ORG }}" \
+               -Dapigee.env="${{ secrets.APIGEE_ENV }}" \
+               -DserviceAccountFile="$APIGEE_SA_KEY_FILE")
+          else
+            echo "No config module"
+          fi
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: apigee-generated
+          name: generated-output
           path: generated/
