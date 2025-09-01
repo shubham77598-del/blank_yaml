@@ -15,8 +15,8 @@
     <maven.compiler.target>17</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <!-- Centralize plugin versions -->
-    <apigee.maven.plugin.version>1.0.0</apigee.maven.plugin.version>
-    <apigee.config.plugin.version>2.3.0</apigee.config.plugin.version>
+    <apigee.edge.maven.plugin.version>2.5.2</apigee.edge.maven.plugin.version>
+    <apigee.config.plugin.version>2.9.3</apigee.config.plugin.version>
     <snakeyaml.version>1.33</snakeyaml.version>
     <exec.plugin.version>3.0.0</exec.plugin.version>
   </properties>
