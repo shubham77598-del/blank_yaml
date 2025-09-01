@@ -4,131 +4,178 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
-public class ConfigGenerator {
+public class SharedFlowGenerator {
 
-    public static void generateApiProducts(List<Map<String,Object>> products, String entitiesDir) throws IOException {
-        Path dir = Paths.get(entitiesDir);
-        Files.createDirectories(dir);
-        for (Map<String,Object> product : products) {
-            String name = val(product.get("name"));
-            if (name == null || name.trim().isEmpty()) continue;
-            String json = buildApiProductJson(product);
-            Files.write(dir.resolve(name + ".json"), json.getBytes("UTF-8"));
-        }
-        createConfigPomIfMissing("generated/config");
+    private final String outputDir;
+
+    public SharedFlowGenerator(String outputDir) {
+        this.outputDir = outputDir;
     }
 
-    public static void finalizeConfigModule(String configRoot) throws IOException {
-        Path entities = Paths.get(configRoot, "entities");
-        if (!Files.exists(entities)) return;
-        if (Files.list(entities).findAny().isPresent()) {
-            createConfigPomIfMissing(configRoot);
+    public void generateSharedFlow(Map<String,Object> sharedFlowConfig, String designName) throws IOException {
+        String name = val(sharedFlowConfig.get("name"));
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("SharedFlow missing name");
         }
+        System.out.println("  [SF] Generating: " + name);
+
+        Path moduleRoot = Paths.get(outputDir, name);
+        Path sharedFlowBundle = moduleRoot.resolve("sharedflowbundle");
+        Path policiesDir = sharedFlowBundle.resolve("policies");
+        Files.createDirectories(policiesDir);
+
+        List<Map<String,Object>> policies = listOfMaps(sharedFlowConfig.get("policies"));
+        for (Map<String,Object> p : policies) {
+            String pName = val(p.get("name"));
+            if (pName == null) continue;
+            String pType = val(p.get("type"));
+            Map<String,Object> cfg = mapOf(p.get("configuration"));
+            Files.write(policiesDir.resolve(pName + ".xml"),
+                renderPolicy(pName, pType, cfg).getBytes("UTF-8"));
+        }
+
+        Files.write(sharedFlowBundle.resolve(name + ".xml"),
+            renderDescriptor(name, sharedFlowConfig).getBytes("UTF-8"));
+
+        // Optional metadata
+        Files.write(sharedFlowBundle.resolve("config.json"),
+            "{\"type\":\"sharedflow\",\"version\":\"1.0\"}\n".getBytes("UTF-8"));
+
+        Files.write(moduleRoot.resolve("pom.xml"),
+            buildPom(designName, name).getBytes("UTF-8"));
     }
 
-    private static String buildApiProductJson(Map<String,Object> product) {
-        String name = val(product.get("name"));
-        String display = val(product.get("displayName"));
-        if (display == null) display = name;
-        String approval = val(product.get("approvalType"));
-        if (approval == null) approval = "AUTO";
-        List<String> proxies = listOf(product.get("proxies"));
-        List<String> envs = listOf(product.get("environments"));
-        Map<String,Object> quota = mapOf(product.get("quota"));
-
-        String quotaLimit = val(quota.get("limit")) == null ? "1000" : val(quota.get("limit"));
-        String quotaInterval = val(quota.get("interval")) == null ? "1" : val(quota.get("interval"));
-        String quotaTimeUnit = val(quota.get("timeUnit")) == null ? "minute" : val(quota.get("timeUnit"));
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\n");
-        field(sb, "name", name, true);
-        field(sb, "displayName", display, true);
-        field(sb, "approvalType", approval, true);
-        array(sb, "proxies", proxies, true);
-        array(sb, "environments", envs, true);
-        field(sb, "quota", quotaLimit, true);
-        field(sb, "quotaInterval", quotaInterval, true);
-        field(sb, "quotaTimeUnit", quotaTimeUnit, true);
-        sb.append("  \"attributes\": []\n");
-        sb.append("}\n");
+    private String renderPolicy(String name, String type, Map<String,Object> cfg) {
+        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        if ("RateLimiter".equals(type)) {
+            String limit = val(cfg.get("limit")); if (limit == null) limit = "100";
+            String timeUnit = val(cfg.get("timeUnit")); if (timeUnit == null) timeUnit = "minute";
+            sb.append("<RateLimiter name=\"").append(name).append("\">\n")
+              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+              .append("  <Allow count=\"").append(limit).append("\"/>\n")
+              .append("  <Interval>1</Interval>\n")
+              .append("  <TimeUnit>").append(timeUnit).append("</TimeUnit>\n")
+              .append("</RateLimiter>\n");
+        } else {
+            sb.append("<Policy name=\"").append(name).append("\">\n")
+              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+              .append("</Policy>\n");
+        }
         return sb.toString();
     }
 
-    private static void field(StringBuilder sb, String k, String v, boolean comma) {
-        sb.append("  \"").append(k).append("\": \"").append(v).append("\"");
-        if (comma) sb.append(",");
-        sb.append("\n");
-    }
+    private String renderDescriptor(String name, Map<String,Object> cfg) {
+        String desc = val(cfg.get("description"));
+        StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        sb.append("<SharedFlowBundle name=\"").append(name).append("\" revision=\"1\">\n");
+        if (desc != null && !desc.trim().isEmpty())
+            sb.append("  <Description>").append(desc).append("</Description>\n");
 
-    private static void array(StringBuilder sb, String k, List<String> vals, boolean comma) {
-        sb.append("  \"").append(k).append("\": [");
-        for (int i = 0; i < vals.size(); i++) {
-            sb.append("\"").append(vals.get(i)).append("\"");
-            if (i < vals.size() - 1) sb.append(", ");
+        sb.append("  <Flows>\n");
+        List<Map<String,Object>> flows = listOfMaps(cfg.get("flows"));
+        for (Map<String,Object> flow : flows) {
+            String fname = val(flow.get("name")); if (fname == null) fname = "flow";
+            String cond = val(flow.get("condition")); if (cond == null) cond = "true";
+            sb.append("    <Flow name=\"").append(fname).append("\">\n")
+              .append("      <Condition>").append(cond).append("</Condition>\n")
+              .append("      <Request>\n");
+            for (Map<String,Object> step : listOfMaps(flow.get("request"))) {
+                String ref = val(step.get("policy"));
+                if (ref != null) sb.append("        <Step><Name>").append(ref).append("</Name></Step>\n");
+            }
+            sb.append("      </Request>\n")
+              .append("      <Response/>\n")
+              .append("    </Flow>\n");
         }
-        sb.append("]");
-        if (comma) sb.append(",");
-        sb.append("\n");
+        sb.append("  </Flows>\n");
+        sb.append("</SharedFlowBundle>\n");
+        return sb.toString();
     }
 
-    private static void createConfigPomIfMissing(String configRoot) throws IOException {
-        Path pom = Paths.get(configRoot, "pom.xml");
-        if (Files.exists(pom)) return;
+    private String buildPom(String designName, String name) {
+        String groupId = (designName == null || designName.trim().isEmpty())
+            ? "com.apigee.sharedflow"
+            : "com.apigee.sharedflow." + designName;
 
-        String xml =
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
             "<project xmlns=\"http://maven.apache.org/POM/4.0.0\" " +
             "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
             "xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n" +
             "  <modelVersion>4.0.0</modelVersion>\n" +
-            "  <groupId>com.apigee.config</groupId>\n" +
-            "  <artifactId>apigee-config-entities</artifactId>\n" +
+            "  <groupId>"+groupId+"</groupId>\n" +
+            "  <artifactId>"+name+"</artifactId>\n" +
             "  <version>1.0</version>\n" +
             "  <packaging>pom</packaging>\n" +
+            "  <name>"+name+"</name>\n" +
             "  <build>\n" +
             "    <plugins>\n" +
             "      <plugin>\n" +
-            "        <groupId>com.apigee.edge.config</groupId>\n" +
-            "        <artifactId>apigee-config-maven-plugin</artifactId>\n" +
-            "        <version>2.3.0</version>\n" +
+            "        <groupId>org.apache.maven.plugins</groupId>\n" +
+            "        <artifactId>maven-antrun-plugin</artifactId>\n" +
+            "        <version>3.1.0</version>\n" +
             "        <executions>\n" +
             "          <execution>\n" +
-            "            <id>apiproducts</id>\n" +
+            "            <id>package-sharedflow</id>\n" +
+            "            <phase>package</phase>\n" +
+            "            <configuration>\n" +
+            "              <target>\n" +
+            "                <mkdir dir=\"${project.build.directory}\"/>\n" +
+            "                <zip destfile=\"${project.build.directory}/${project.artifactId}-${project.version}.zip\" " +
+            "                     basedir=\"${project.basedir}/sharedflowbundle\"/>\n" +
+            "              </target>\n" +
+            "            </configuration>\n" +
+            "            <goals><goal>run</goal></goals>\n" +
+            "          </execution>\n" +
+            "        </executions>\n" +
+            "      </plugin>\n" +
+            "      <plugin>\n" +
+            "        <groupId>com.google.cloud.apigee</groupId>\n" +
+            "        <artifactId>apigee-maven-plugin</artifactId>\n" +
+            "        <version>1.0.0</version>\n" +
+            "        <executions>\n" +
+            "          <execution>\n" +
+            "            <id>import-sharedflow</id>\n" +
+            "            <phase>verify</phase>\n" +
+            "            <goals><goal>import-shared-flow</goal></goals>\n" +
+            "            <configuration>\n" +
+            "              <file>${project.build.directory}/${project.artifactId}-${project.version}.zip</file>\n" +
+            "              <name>"+name+"</name>\n" +
+            "              <override>true</override>\n" +
+            "            </configuration>\n" +
+            "          </execution>\n" +
+            "          <execution>\n" +
+            "            <id>deploy-sharedflow</id>\n" +
             "            <phase>install</phase>\n" +
-            "            <goals><goal>apiproducts</goal></goals>\n" +
+            "            <goals><goal>deploy-shared-flow</goal></goals>\n" +
+            "            <configuration>\n" +
+            "              <name>"+name+"</name>\n" +
+            "              <environment>${apigee.env}</environment>\n" +
+            "              <override>true</override>\n" +
+            "            </configuration>\n" +
             "          </execution>\n" +
             "        </executions>\n" +
             "        <configuration>\n" +
-            "          <org>${apigee.org}</org>\n" +
-            "          <env>${apigee.env}</env>\n" +
-            "          <apigee.config.dir>${project.basedir}/entities</apigee.config.dir>\n" +
-            "          <apigee.config.options>update</apigee.config.options>\n" +
+            "          <organization>${apigee.org}</organization>\n" +
             "          <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>\n" +
             "        </configuration>\n" +
             "      </plugin>\n" +
             "    </plugins>\n" +
             "  </build>\n" +
             "</project>\n";
-
-        Files.createDirectories(Paths.get(configRoot));
-        Files.write(pom, xml.getBytes("UTF-8"));
     }
 
-    private static String val(Object o){ return o==null?null:String.valueOf(o); }
-
-    private static List<String> listOf(Object o) {
-        List<String> out = new ArrayList<>();
-        if (o instanceof List) {
-            for (Object item : (List)o) {
-                if (item != null) out.add(String.valueOf(item));
-            }
-        }
+    private List<Map<String,Object>> listOfMaps(Object o) {
+        List<Map<String,Object>> out = new ArrayList<>();
+        if (o instanceof List)
+            for (Object i : (List)o)
+                if (i instanceof Map) out.add((Map<String,Object>) i);
         return out;
     }
 
-    private static Map<String,Object> mapOf(Object o) {
+    private Map<String,Object> mapOf(Object o) {
         if (o instanceof Map) return (Map<String,Object>) o;
         return new HashMap<>();
     }
+
+    private String val(Object o){ return o==null?null:String.valueOf(o); }
 }
