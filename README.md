@@ -44,7 +44,11 @@ We **manually zip** the bundle with AntRun, then the Apigee plugin imports and d
 
 ## Service Account
 
-GitHub Secret `APIGEE_SA_KEY_JSON` must contain the raw JSON of a GCP service account with:
+GitHub Secret containing the raw JSON of a GCP service account is required. The workflow supports both naming conventions:
+- `APIGEE_SA_KEY_JSON` (recommended) 
+- `APIGEE_SA_KEY` (backwards compatibility)
+
+The service account must have:
 - `roles/apigee.admin` (or appropriate combination)
 - Access to the Apigee X org & environment
 
@@ -144,7 +148,7 @@ The legacy `io.apigee.build-tools.enterprise4g` plugin has brittle behavior (Nul
 If the GitHub Actions workflow fails during the "Verify API Deployments" step:
 
 1. **Check deployment logs**: Review the Maven deployment logs for any errors
-2. **Verify credentials**: Ensure `APIGEE_SA_KEY_JSON`, `APIGEE_ORG`, and `APIGEE_ENV` secrets are correctly configured
+2. **Verify credentials**: Ensure service account secret (`APIGEE_SA_KEY_JSON` or `APIGEE_SA_KEY`), `APIGEE_ORG`, and `APIGEE_ENV` secrets are correctly configured
 3. **Network connectivity**: The verification script needs to access `{org}-{env}.apigee.net`
 4. **API accessibility**: Some APIs may require authentication (401/403 responses are considered successful)
 5. **Custom domains**: If using custom domains, set the `APIGEE_HOST` environment variable

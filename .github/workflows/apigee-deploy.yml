@@ -1,5 +1,10 @@
 name: Apigee X Deployment
 
+# Required GitHub Secrets:
+# - APIGEE_ORG: Your Apigee organization name 
+# - APIGEE_ENV: Target environment (e.g., eval, prod)
+# - APIGEE_SA_KEY_JSON or APIGEE_SA_KEY: GCP service account JSON with Apigee admin permissions
+
 on:
   push:
     paths:
@@ -26,7 +31,15 @@ jobs:
 
       - name: Write Service Account Key
         run: |
-            echo "${{ secrets.APIGEE_SA_KEY_JSON }}" > sa.json
+            # Support both APIGEE_SA_KEY_JSON and APIGEE_SA_KEY for backwards compatibility
+            if [ -n "${{ secrets.APIGEE_SA_KEY_JSON }}" ]; then
+              echo "${{ secrets.APIGEE_SA_KEY_JSON }}" > sa.json
+            elif [ -n "${{ secrets.APIGEE_SA_KEY }}" ]; then
+              echo "${{ secrets.APIGEE_SA_KEY }}" > sa.json
+            else
+              echo "Error: Neither APIGEE_SA_KEY_JSON nor APIGEE_SA_KEY secret is configured"
+              exit 1
+            fi
             chmod 600 sa.json
 
       - name: Generate Apigee Bundles from Design
