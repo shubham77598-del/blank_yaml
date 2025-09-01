@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.apigee.sharedflows</groupId>
+  <artifactId>common-logging</artifactId>
+  <version>1.0</version>
+  <packaging>pom</packaging>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.0.0</version>
+        <executions>
+          <execution>
+            <id>zip-bundle</id>
+            <phase>compile</phase>
+            <goals><goal>run</goal></goals>
+            <configuration>
+              <target>
+                <zip destfile="${project.build.directory}/common-logging.zip">
+                  <zipfileset dir="${project.basedir}/sharedflowbundle" prefix="sharedflowbundle"/>
+                </zip>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>com.google.cloud.apigee</groupId>
+        <artifactId>apigee-maven-plugin</artifactId>
+        <version>1.0.0</version>
+        <executions>
+          <execution>
+            <id>import-sharedflow</id>
+            <phase>install</phase>
+            <goals><goal>importSharedflow</goal></goals>
+            <configuration>
+              <org>${apigee.org}</org>
+              <file>${project.build.directory}/common-logging.zip</file>
+              <name>common-logging</name>
+              <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>
+            </configuration>
+          </execution>
+          <execution>
+            <id>deploy-sharedflow</id>
+            <phase>install</phase>
+            <goals><goal>deploySharedflow</goal></goals>
+            <configuration>
+              <org>${apigee.org}</org>
+              <env>${apigee.env}</env>
+              <name>common-logging</name>
+              <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

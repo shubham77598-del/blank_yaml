@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SharedFlow name="common-security">
+  <DisplayName>common-security</DisplayName>
+  <Description>Common security policies for all APIs</Description>
+</SharedFlow>

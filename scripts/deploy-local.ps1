@@ -16,8 +16,13 @@ if (-not $Org -or -not $Env) {
 if ($Regenerate) {
   Write-Host "Regenerating bundles..."
   Remove-Item -Recurse -Force ..\generated -ErrorAction SilentlyContinue
-  mvn -q -DcleanGenerated=true compile exec:java -Dexec.mainClass="com.company.design.DesignParser"
-  if ($LASTEXITCODE -ne 0) { Write-Host "Generation failed." -ForegroundColor Red; exit 1 }
+  Push-Location ..
+  mvn -q -DcleanGenerated=true compile exec:java "-Dexec.mainClass=com.company.design.DesignParser"
+  if ($LASTEXITCODE -ne 0) { 
+    Pop-Location
+    Write-Host "Generation failed." -ForegroundColor Red; exit 1 
+  }
+  Pop-Location
 }
 
 function Deploy-Modules($path, $label) {
@@ -25,7 +30,7 @@ function Deploy-Modules($path, $label) {
     Get-ChildItem $path -Directory | ForEach-Object {
       Write-Host "`n=== Deploy $label $($_.Name) ===" -ForegroundColor Cyan
       Push-Location $_.FullName
-      mvn -q install -Dapigee.org=$Org -Dapigee.env=$Env -DserviceAccountFile=$ServiceAccount
+      mvn -q install "-Dapigee.org=$Org" "-Dapigee.env=$Env" "-DserviceAccountFile=$ServiceAccount"
       if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED $label $($_.Name)" -ForegroundColor Red
         Pop-Location
@@ -44,7 +49,7 @@ Deploy-Modules "..\generated\proxies" "Proxy"
 if (Test-Path ..\generated\config\pom.xml) {
   Write-Host "`n=== Deploy API Products ===" -ForegroundColor Cyan
   Push-Location ..\generated\config
-  mvn -q install -Dapigee.org=$Org -Dapigee.env=$Env -DserviceAccountFile=$ServiceAccount
+  mvn -q install "-Dapigee.org=$Org" "-Dapigee.env=$Env" "-DserviceAccountFile=$ServiceAccount"
   Pop-Location
 } else {
   Write-Host "No config module."
