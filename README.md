@@ -44,16 +44,33 @@ We **manually zip** the bundle with AntRun, then the Apigee plugin imports and d
 
 ## Service Account
 
-GitHub Secret containing the raw JSON of a GCP service account is required. The workflow supports multiple naming conventions:
-- `APIGEE_SA_KEY_JSON` (recommended) 
-- `APIGEE_SA_KEY` (backwards compatibility)
-- `apigee` (alternative naming)
+GitHub secrets for Apigee deployment are required. The workflow supports multiple configurations:
 
-The service account must have:
+### Option 1: Individual Secrets (Traditional)
+- `APIGEE_ORG`: Your Apigee organization name
+- `APIGEE_ENV`: Target environment (e.g., eval, prod)  
+- `APIGEE_SA_KEY_JSON`: GCP service account JSON (recommended)
+- or `APIGEE_SA_KEY`: GCP service account JSON (legacy name)
+
+### Option 2: Single JSON Secret (Consolidated)
+- `apigee`: JSON object containing all configuration:
+  ```json
+  {
+    "APIGEE_ORG": "your-org-name",
+    "APIGEE_ENV": "eval", 
+    "APIGEE_SA_KEY": "{\"type\":\"service_account\",...}"
+  }
+  ```
+
+### Option 3: Raw Service Account Key
+- `apigee`: Raw GCP service account JSON
+- `APIGEE_ORG` and `APIGEE_ENV`: As separate secrets
+
+**Service Account Requirements:**
 - `roles/apigee.admin` (or appropriate combination)
 - Access to the Apigee X org & environment
 
-Workflow writes it to `sa.json` (ignored by git).
+The workflow writes the service account key to `sa.json` (ignored by git).
 
 ## Example Design (excerpt)
 
