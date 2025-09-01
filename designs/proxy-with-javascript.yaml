@@ -26,13 +26,11 @@ proxies:
             
             // Set the transformed request
             context.setVariable('request.content', JSON.stringify(transformed));
-      
       - name: verify-api-key
         type: VerifyAPIKey
         displayName: Verify API Key
         configuration:
           apiKey: request.queryparam.apikey
-    
     endpoints:
       - name: default
         type: proxy
@@ -43,7 +41,6 @@ proxies:
             request:
               - policy: verify-api-key
               - policy: transform-request
-    
     targetEndpoints:
       - name: default
         url: https://api.example.com/backend
