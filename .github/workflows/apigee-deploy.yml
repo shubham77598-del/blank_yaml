@@ -47,11 +47,377 @@ jobs:
           echo "APIGEE_ORG=${{ secrets.APIGEE_ORG }}" >> $GITHUB_ENV
           echo "APIGEE_ENV=${{ secrets.APIGEE_ENV }}" >> $GITHUB_ENV
 
-      - name: Create Java Project Structure
+      - name: Create Enhanced Java Implementation
         run: |
-          # Create proper Maven project structure
           mkdir -p src/main/java/com/example
-
+          
+          # Create ProxyGenerator.java
+          cat > src/main/java/com/example/ProxyGenerator.java << 'EOT'
+          package com.example;
+          
+          import java.io.File;
+          import java.io.FileWriter;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.nio.file.Paths;
+          import java.util.List;
+          import java.util.Map;
+          
+          public class ProxyGenerator {
+              private final String targetDir;
+              
+              public ProxyGenerator(String targetDir) {
+                  this.targetDir = targetDir;
+              }
+              
+              public void generateProxyBundle(String proxyName, Map<String, Object> proxyConfig) {
+                  try {
+                      System.out.println("Generating API Proxy bundle for: " + proxyName);
+                      
+                      // Create main proxy directory
+                      String proxyDir = targetDir + "/" + proxyName;
+                      Files.createDirectories(Paths.get(proxyDir));
+                      
+                      // Create apiproxy directory structure
+                      Files.createDirectories(Paths.get(proxyDir + "/apiproxy"));
+                      Files.createDirectories(Paths.get(proxyDir + "/apiproxy/policies"));
+                      Files.createDirectories(Paths.get(proxyDir + "/apiproxy/proxies"));
+                      Files.createDirectories(Paths.get(proxyDir + "/apiproxy/targets"));
+                      Files.createDirectories(Paths.get(proxyDir + "/apiproxy/resources/jsc"));
+                      
+                      // Generate proxy XML
+                      generateProxyXml(proxyDir, proxyName, proxyConfig);
+                      
+                      // Generate policies
+                      if (proxyConfig.containsKey("policies")) {
+                          generatePolicies(proxyDir, (List<Map<String, Object>>) proxyConfig.get("policies"));
+                      }
+                      
+                      // Generate proxy endpoints
+                      if (proxyConfig.containsKey("endpoints")) {
+                          generateProxyEndpoints(proxyDir, (List<Map<String, Object>>) proxyConfig.get("endpoints"));
+                      }
+                      
+                      // Generate target endpoints
+                      if (proxyConfig.containsKey("targetEndpoints")) {
+                          generateTargetEndpoints(proxyDir, (List<Map<String, Object>>) proxyConfig.get("targetEndpoints"));
+                      }
+                      
+                      System.out.println("Successfully generated API Proxy bundle: " + proxyName);
+                  } catch (Exception e) {
+                      System.err.println("Error generating API Proxy bundle for: " + proxyName);
+                      e.printStackTrace();
+                  }
+              }
+              
+              private void generateProxyXml(String proxyDir, String proxyName, Map<String, Object> config) throws Exception {
+                  String description = config.containsKey("description") ? 
+                          (String) config.get("description") : "Generated API Proxy";
+                  String basePath = config.containsKey("basePath") ? 
+                          (String) config.get("basePath") : "/v1/" + proxyName;
+                  
+                  String proxyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                          "<APIProxy name=\"" + proxyName + "\">\n" +
+                          "    <Description>" + description + "</Description>\n" +
+                          "    <BasePaths>\n" +
+                          "        <BasePath>" + basePath + "</BasePath>\n" +
+                          "    </BasePaths>\n" +
+                          "</APIProxy>\n";
+                  
+                  Path filePath = Paths.get(proxyDir + "/apiproxy/" + proxyName + ".xml");
+                  Files.write(filePath, proxyXml.getBytes());
+              }
+              
+              private void generatePolicies(String proxyDir, List<Map<String, Object>> policies) throws Exception {
+                  for (Map<String, Object> policy : policies) {
+                      String policyName = (String) policy.get("name");
+                      String policyType = (String) policy.get("type");
+                      String displayName = policy.containsKey("displayName") ? 
+                              (String) policy.get("displayName") : policyName;
+                      
+                      String policyXml;
+                      switch (policyType) {
+                          case "Quota":
+                              Map<String, Object> config = (Map<String, Object>) policy.get("configuration");
+                              int limit = (Integer) config.get("limit");
+                              String timeUnit = (String) config.get("timeUnit");
+                              
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<Quota name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "    <Allow count=\"" + limit + "\"/>\n" +
+                                      "    <Interval>" + timeUnit + "</Interval>\n" +
+                                      "</Quota>\n";
+                              break;
+                          case "OAuthV2":
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<OAuthV2 name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "    <Operation>VerifyAccessToken</Operation>\n" +
+                                      "</OAuthV2>\n";
+                              break;
+                          case "JSONThreatProtection":
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<JSONThreatProtection name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "    <ArrayElementCount>20</ArrayElementCount>\n" +
+                                      "    <ContainerDepth>10</ContainerDepth>\n" +
+                                      "    <ObjectEntryCount>15</ObjectEntryCount>\n" +
+                                      "    <ObjectEntryNameLength>50</ObjectEntryNameLength>\n" +
+                                      "    <StringValueLength>500</StringValueLength>\n" +
+                                      "</JSONThreatProtection>\n";
+                              break;
+                          default:
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<" + policyType + " name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "</" + policyType + ">\n";
+                      }
+                      
+                      Path filePath = Paths.get(proxyDir + "/apiproxy/policies/" + policyName + ".xml");
+                      Files.write(filePath, policyXml.getBytes());
+                  }
+              }
+              
+              private void generateProxyEndpoints(String proxyDir, List<Map<String, Object>> endpoints) throws Exception {
+                  for (Map<String, Object> endpoint : endpoints) {
+                      String endpointName = (String) endpoint.get("name");
+                      String basePath = endpoint.containsKey("basePath") ? 
+                              (String) endpoint.get("basePath") : "/v1/" + endpointName;
+                      
+                      StringBuilder proxyEndpointXml = new StringBuilder();
+                      proxyEndpointXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+                      proxyEndpointXml.append("<ProxyEndpoint name=\"").append(endpointName).append("\">\n");
+                      proxyEndpointXml.append("    <HTTPProxyConnection>\n");
+                      proxyEndpointXml.append("        <BasePath>").append(basePath).append("</BasePath>\n");
+                      proxyEndpointXml.append("    </HTTPProxyConnection>\n");
+                      
+                      // Handle flows
+                      if (endpoint.containsKey("flows")) {
+                          proxyEndpointXml.append("    <Flows>\n");
+                          
+                          List<Map<String, Object>> flows = (List<Map<String, Object>>) endpoint.get("flows");
+                          for (Map<String, Object> flow : flows) {
+                              String flowName = (String) flow.get("name");
+                              String condition = flow.containsKey("condition") ? 
+                                      (String) flow.get("condition") : "";
+                              
+                              proxyEndpointXml.append("        <Flow name=\"").append(flowName).append("\">\n");
+                              
+                              if (!condition.isEmpty()) {
+                                  proxyEndpointXml.append("            <Condition>").append(condition).append("</Condition>\n");
+                              }
+                              
+                              // Handle request flow
+                              if (flow.containsKey("request")) {
+                                  proxyEndpointXml.append("            <Request>\n");
+                                  
+                                  List<Map<String, Object>> requestSteps = (List<Map<String, Object>>) flow.get("request");
+                                  for (Map<String, Object> step : requestSteps) {
+                                      if (step.containsKey("policy")) {
+                                          String policy = (String) step.get("policy");
+                                          proxyEndpointXml.append("                <Step>\n");
+                                          proxyEndpointXml.append("                    <Name>").append(policy).append("</Name>\n");
+                                          proxyEndpointXml.append("                </Step>\n");
+                                      } else if (step.containsKey("sharedFlow")) {
+                                          String sharedFlow = (String) step.get("sharedFlow");
+                                          proxyEndpointXml.append("                <Step>\n");
+                                          proxyEndpointXml.append("                    <Name>").append(sharedFlow).append("-callout").append("</Name>\n");
+                                          proxyEndpointXml.append("                </Step>\n");
+                                          
+                                          // Generate FlowCallout policy for shared flow
+                                          String flowCalloutXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                                  "<FlowCallout name=\"" + sharedFlow + "-callout\">\n" +
+                                                  "    <DisplayName>" + sharedFlow + " Callout</DisplayName>\n" +
+                                                  "    <SharedFlowBundle>" + sharedFlow + "</SharedFlowBundle>\n" +
+                                                  "</FlowCallout>\n";
+                                          
+                                          Path flowCalloutPath = Paths.get(proxyDir + "/apiproxy/policies/" + sharedFlow + "-callout.xml");
+                                          Files.write(flowCalloutPath, flowCalloutXml.getBytes());
+                                      }
+                                  }
+                                  
+                                  proxyEndpointXml.append("            </Request>\n");
+                              }
+                              
+                              // Handle response flow if needed
+                              
+                              proxyEndpointXml.append("        </Flow>\n");
+                          }
+                          
+                          proxyEndpointXml.append("    </Flows>\n");
+                      }
+                      
+                      proxyEndpointXml.append("    <RouteRule name=\"default\">\n");
+                      proxyEndpointXml.append("        <TargetEndpoint>default</TargetEndpoint>\n");
+                      proxyEndpointXml.append("    </RouteRule>\n");
+                      proxyEndpointXml.append("</ProxyEndpoint>\n");
+                      
+                      Path filePath = Paths.get(proxyDir + "/apiproxy/proxies/" + endpointName + ".xml");
+                      Files.write(filePath, proxyEndpointXml.toString().getBytes());
+                  }
+              }
+              
+              private void generateTargetEndpoints(String proxyDir, List<Map<String, Object>> targets) throws Exception {
+                  for (Map<String, Object> target : targets) {
+                      String targetName = (String) target.get("name");
+                      String url = target.containsKey("url") ? 
+                              (String) target.get("url") : "https://api.example.com";
+                      
+                      String targetEndpointXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                              "<TargetEndpoint name=\"" + targetName + "\">\n" +
+                              "    <HTTPTargetConnection>\n" +
+                              "        <URL>" + url + "</URL>\n" +
+                              "    </HTTPTargetConnection>\n" +
+                              "</TargetEndpoint>\n";
+                      
+                      Path filePath = Paths.get(proxyDir + "/apiproxy/targets/" + targetName + ".xml");
+                      Files.write(filePath, targetEndpointXml.getBytes());
+                  }
+              }
+          }
+          EOT
+          
+          # Create SharedFlowGenerator.java
+          cat > src/main/java/com/example/SharedFlowGenerator.java << 'EOT'
+          package com.example;
+          
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.nio.file.Paths;
+          import java.util.List;
+          import java.util.Map;
+          
+          public class SharedFlowGenerator {
+              private final String targetDir;
+              
+              public SharedFlowGenerator(String targetDir) {
+                  this.targetDir = targetDir;
+              }
+              
+              public void generateSharedFlowBundle(String sharedFlowName, Map<String, Object> sharedFlowConfig) {
+                  try {
+                      System.out.println("Generating Shared Flow bundle for: " + sharedFlowName);
+                      
+                      // Create main sharedflow directory
+                      String sharedFlowDir = targetDir + "/" + sharedFlowName;
+                      Files.createDirectories(Paths.get(sharedFlowDir));
+                      
+                      // Create sharedflowbundle directory structure
+                      Files.createDirectories(Paths.get(sharedFlowDir + "/sharedflowbundle"));
+                      Files.createDirectories(Paths.get(sharedFlowDir + "/sharedflowbundle/policies"));
+                      Files.createDirectories(Paths.get(sharedFlowDir + "/sharedflowbundle/sharedflows"));
+                      
+                      // Generate sharedflow XML
+                      generateSharedFlowXml(sharedFlowDir, sharedFlowName, sharedFlowConfig);
+                      
+                      // Generate policies
+                      if (sharedFlowConfig.containsKey("policies")) {
+                          generatePolicies(sharedFlowDir, (List<Map<String, Object>>) sharedFlowConfig.get("policies"));
+                      }
+                      
+                      // Generate sharedflow implementation
+                      if (sharedFlowConfig.containsKey("flows")) {
+                          generateSharedFlowImplementation(sharedFlowDir, sharedFlowName, 
+                                  (List<Map<String, Object>>) sharedFlowConfig.get("flows"));
+                      }
+                      
+                      System.out.println("Successfully generated Shared Flow bundle: " + sharedFlowName);
+                  } catch (Exception e) {
+                      System.err.println("Error generating Shared Flow bundle for: " + sharedFlowName);
+                      e.printStackTrace();
+                  }
+              }
+              
+              private void generateSharedFlowXml(String sharedFlowDir, String sharedFlowName, Map<String, Object> config) throws Exception {
+                  String description = config.containsKey("description") ? 
+                          (String) config.get("description") : "Generated Shared Flow";
+                  
+                  String sharedFlowXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                          "<SharedFlowBundle name=\"" + sharedFlowName + "\">\n" +
+                          "    <Description>" + description + "</Description>\n" +
+                          "</SharedFlowBundle>\n";
+                  
+                  Path filePath = Paths.get(sharedFlowDir + "/sharedflowbundle/" + sharedFlowName + ".xml");
+                  Files.write(filePath, sharedFlowXml.getBytes());
+              }
+              
+              private void generatePolicies(String sharedFlowDir, List<Map<String, Object>> policies) throws Exception {
+                  for (Map<String, Object> policy : policies) {
+                      String policyName = (String) policy.get("name");
+                      String policyType = (String) policy.get("type");
+                      String displayName = policy.containsKey("displayName") ? 
+                              (String) policy.get("displayName") : policyName;
+                      
+                      String policyXml;
+                      switch (policyType) {
+                          case "OAuthV2":
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<OAuthV2 name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "    <Operation>VerifyAccessToken</Operation>\n" +
+                                      "</OAuthV2>\n";
+                              break;
+                          case "JSONThreatProtection":
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<JSONThreatProtection name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "    <ArrayElementCount>20</ArrayElementCount>\n" +
+                                      "    <ContainerDepth>10</ContainerDepth>\n" +
+                                      "    <ObjectEntryCount>15</ObjectEntryCount>\n" +
+                                      "    <ObjectEntryNameLength>50</ObjectEntryNameLength>\n" +
+                                      "    <StringValueLength>500</StringValueLength>\n" +
+                                      "</JSONThreatProtection>\n";
+                              break;
+                          default:
+                              policyXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+                                      "<" + policyType + " name=\"" + policyName + "\">\n" +
+                                      "    <DisplayName>" + displayName + "</DisplayName>\n" +
+                                      "</" + policyType + ">\n";
+                      }
+                      
+                      Path filePath = Paths.get(sharedFlowDir + "/sharedflowbundle/policies/" + policyName + ".xml");
+                      Files.write(filePath, policyXml.getBytes());
+                  }
+              }
+              
+              private void generateSharedFlowImplementation(String sharedFlowDir, String sharedFlowName, 
+                                                           List<Map<String, Object>> flows) throws Exception {
+                  for (Map<String, Object> flow : flows) {
+                      String flowName = (String) flow.get("name");
+                      
+                      StringBuilder sharedFlowXml = new StringBuilder();
+                      sharedFlowXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+                      sharedFlowXml.append("<SharedFlow name=\"").append(flowName).append("\">\n");
+                      
+                      // Handle request flow
+                      if (flow.containsKey("request")) {
+                          sharedFlowXml.append("    <Request>\n");
+                          
+                          List<Map<String, Object>> requestSteps = (List<Map<String, Object>>) flow.get("request");
+                          for (Map<String, Object> step : requestSteps) {
+                              if (step.containsKey("policy")) {
+                                  String policy = (String) step.get("policy");
+                                  sharedFlowXml.append("        <Step>\n");
+                                  sharedFlowXml.append("            <Name>").append(policy).append("</Name>\n");
+                                  sharedFlowXml.append("        </Step>\n");
+                              }
+                          }
+                          
+                          sharedFlowXml.append("    </Request>\n");
+                      }
+                      
+                      // Handle response flow if needed
+                      
+                      sharedFlowXml.append("</SharedFlow>\n");
+                      
+                      Path filePath = Paths.get(sharedFlowDir + "/sharedflowbundle/sharedflows/" + flowName + ".xml");
+                      Files.write(filePath, sharedFlowXml.toString().getBytes());
+                  }
+              }
+          }
+          EOT
+          
           # Create DesignParser.java
           cat > src/main/java/com/example/DesignParser.java << 'EOT'
           package com.example;
@@ -61,6 +427,7 @@ jobs:
           import java.io.FileInputStream;
           import java.nio.file.Files;
           import java.nio.file.Paths;
+          import java.util.List;
           import java.util.Map;
           
           public class DesignParser {
@@ -69,8 +436,15 @@ jobs:
                       System.out.println("Starting YAML design parsing...");
                       
                       // Create target directories
-                      Files.createDirectories(Paths.get("target/apiproxies"));
-                      Files.createDirectories(Paths.get("target/sharedflows"));
+                      String apiProxiesDir = "target/apiproxies";
+                      String sharedFlowsDir = "target/sharedflows";
+                      
+                      Files.createDirectories(Paths.get(apiProxiesDir));
+                      Files.createDirectories(Paths.get(sharedFlowsDir));
+                      
+                      // Initialize generators
+                      SharedFlowGenerator sharedFlowGenerator = new SharedFlowGenerator(sharedFlowsDir);
+                      ProxyGenerator proxyGenerator = new ProxyGenerator(apiProxiesDir);
                       
                       // Load and parse all YAML files in the designs directory
                       File designsDir = new File("designs");
@@ -84,13 +458,23 @@ jobs:
                               // Process shared flows first
                               if (data.containsKey("sharedFlows")) {
                                   System.out.println("Found shared flows, processing...");
-                                  // In a real implementation, generate shared flow bundles here
+                                  List<Map<String, Object>> sharedFlows = (List<Map<String, Object>>) data.get("sharedFlows");
+                                  
+                                  for (Map<String, Object> sharedFlow : sharedFlows) {
+                                      String name = (String) sharedFlow.get("name");
+                                      sharedFlowGenerator.generateSharedFlowBundle(name, sharedFlow);
+                                  }
                               }
                               
                               // Process proxies second
                               if (data.containsKey("proxies")) {
                                   System.out.println("Found API proxies, processing...");
-                                  // In a real implementation, generate API proxy bundles here
+                                  List<Map<String, Object>> proxies = (List<Map<String, Object>>) data.get("proxies");
+                                  
+                                  for (Map<String, Object> proxy : proxies) {
+                                      String name = (String) proxy.get("name");
+                                      proxyGenerator.generateProxyBundle(name, proxy);
+                                  }
                               }
                           }
                       }
@@ -113,13 +497,12 @@ jobs:
               <groupId>com.example</groupId>
               <artifactId>apigee-design-automation</artifactId>
               <version>1.0-SNAPSHOT</version>
-              <packaging>jar</packaging>  <!-- Changed from pom to jar packaging -->
+              <packaging>jar</packaging>
           
               <properties>
                   <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
                   <maven.compiler.source>1.8</maven.compiler.source>
                   <maven.compiler.target>1.8</maven.compiler.target>
-                  <apigee.deploy.plugin.version>2.3.5</apigee.deploy.plugin.version>
                   <apigee.org>${env.APIGEE_ORG}</apigee.org>
                   <apigee.env>${env.APIGEE_ENV}</apigee.env>
                   <apigee.bearer>${env.APIGEE_TOKEN}</apigee.bearer>
@@ -160,28 +543,222 @@ jobs:
           </project>
           EOT
 
-      - name: Install Apigee Maven Plugin from GitHub
+      - name: Create designs directory if it doesn't exist
+        run: mkdir -p designs
+
+      - name: Copy YAML file to designs directory if it doesn't exist
+        run: |
+          if [ ! -f "designs/proxy-with-sharedflow.yaml" ]; then
+            cat > designs/proxy-with-sharedflow.yaml << 'EOT'
+          ---
+          sharedFlows:
+            - name: security-flow
+              description: Common security checks
+              policies:
+                - name: oauth-validation
+                  type: OAuthV2
+                  displayName: Validate OAuth Token
+                  configuration:
+                    operation: VerifyAccessToken
+                - name: threat-protection
+                  type: JSONThreatProtection
+                  displayName: JSON Threat Protection
+              flows:
+                - name: default
+                  request:
+                    - policy: oauth-validation
+                    - policy: threat-protection
+          
+          proxies:
+            - name: product-api
+              basePath: /v1/products
+              description: Product API with shared flow for security
+              policies:
+                - name: product-quota
+                  type: Quota
+                  displayName: Product API Quota
+                  configuration:
+                    limit: 50
+                    timeUnit: minute
+              endpoints:
+                - name: default
+                  type: proxy
+                  basePath: /v1/products
+                  flows:
+                    - name: product-flow
+                      condition: "true"
+                      request:
+                        - sharedFlow: security-flow  # This will be converted to a
+                                                    # FlowCallout policy
+                        - policy: product-quota
+              targetEndpoints:
+                - name: default
+                  url: https://api.example.com/products
+          EOT
+          fi
+
+      - name: Compile Java Files
+        run: mvn compile
+
+      - name: Execute YAML Parser to Generate Bundles
+        run: mvn exec:java
+
+      - name: Install Apigee Deploy Maven Plugin
         run: |
           git clone https://github.com/apigee/apigee-deploy-maven-plugin.git
           cd apigee-deploy-maven-plugin
           mvn install -DskipTests
           cd ..
 
-      - name: Compile and Run Java Parser
+      - name: Deploy Shared Flows to Apigee X
         run: |
-          mvn compile
-          mvn exec:java
-          
-      - name: Debug Generated Files
+          # Deploy each shared flow individually
+          for SF_DIR in target/sharedflows/*; do
+            if [ -d "$SF_DIR" ]; then
+              SF_NAME=$(basename "$SF_DIR")
+              echo "Deploying shared flow: $SF_NAME"
+              
+              # Create deployment POM for shared flow
+              cat > "$SF_DIR/pom.xml" << EOT
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>${SF_NAME}-sf</artifactId>
+              <version>1.0</version>
+              <packaging>pom</packaging>
+              
+              <properties>
+                  <apigee.org>${APIGEE_ORG}</apigee.org>
+                  <apigee.env>${APIGEE_ENV}</apigee.env>
+                  <apigee.bearer>${APIGEE_TOKEN}</apigee.bearer>
+              </properties>
+              
+              <build>
+                  <plugins>
+                      <plugin>
+                          <groupId>io.apigee.build-tools.enterprise4g</groupId>
+                          <artifactId>apigee-edge-maven-plugin</artifactId>
+                          <version>2.1.0</version>
+                          <executions>
+                              <execution>
+                                  <id>configure-bundle</id>
+                                  <phase>package</phase>
+                                  <goals>
+                                      <goal>configure</goal>
+                                  </goals>
+                              </execution>
+                              <execution>
+                                  <id>deploy-bundle</id>
+                                  <phase>install</phase>
+                                  <goals>
+                                      <goal>deploy</goal>
+                                  </goals>
+                              </execution>
+                          </executions>
+                          <configuration>
+                              <bundleType>sharedflow</bundleType>
+                              <apiName>${SF_NAME}</apiName>
+                              <hostUrl>https://apigee.googleapis.com</hostUrl>
+                              <authType>oauth</authType>
+                              <bearer>\${apigee.bearer}</bearer>
+                              <apigeeOrg>\${apigee.org}</apigeeOrg>
+                              <apigeeEnv>\${apigee.env}</apigeeEnv>
+                              <options>update</options>
+                          </configuration>
+                      </plugin>
+                  </plugins>
+              </build>
+          </project>
+          EOT
+              
+              # Deploy shared flow
+              cd "$SF_DIR"
+              mvn clean install -X
+              cd -
+            fi
+          done
+
+      - name: Deploy API Proxies to Apigee X
         run: |
-          echo "Current directory structure:"
+          # Deploy each API proxy individually
+          for PROXY_DIR in target/apiproxies/*; do
+            if [ -d "$PROXY_DIR" ]; then
+              PROXY_NAME=$(basename "$PROXY_DIR")
+              echo "Deploying API proxy: $PROXY_NAME"
+              
+              # Create deployment POM for API proxy
+              cat > "$PROXY_DIR/pom.xml" << EOT
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>${PROXY_NAME}-proxy</artifactId>
+              <version>1.0</version>
+              <packaging>pom</packaging>
+              
+              <properties>
+                  <apigee.org>${APIGEE_ORG}</apigee.org>
+                  <apigee.env>${APIGEE_ENV}</apigee.env>
+                  <apigee.bearer>${APIGEE_TOKEN}</apigee.bearer>
+              </properties>
+              
+              <build>
+                  <plugins>
+                      <plugin>
+                          <groupId>io.apigee.build-tools.enterprise4g</groupId>
+                          <artifactId>apigee-edge-maven-plugin</artifactId>
+                          <version>2.1.0</version>
+                          <executions>
+                              <execution>
+                                  <id>configure-bundle</id>
+                                  <phase>package</phase>
+                                  <goals>
+                                      <goal>configure</goal>
+                                  </goals>
+                              </execution>
+                              <execution>
+                                  <id>deploy-bundle</id>
+                                  <phase>install</phase>
+                                  <goals>
+                                      <goal>deploy</goal>
+                                  </goals>
+                              </execution>
+                          </executions>
+                          <configuration>
+                              <bundleType>apiproxy</bundleType>
+                              <apiName>${PROXY_NAME}</apiName>
+                              <hostUrl>https://apigee.googleapis.com</hostUrl>
+                              <authType>oauth</authType>
+                              <bearer>\${apigee.bearer}</bearer>
+                              <apigeeOrg>\${apigee.org}</apigeeOrg>
+                              <apigeeEnv>\${apigee.env}</apigeeEnv>
+                              <options>update</options>
+                          </configuration>
+                      </plugin>
+                  </plugins>
+              </build>
+          </project>
+          EOT
+              
+              # Deploy API proxy
+              cd "$PROXY_DIR"
+              mvn clean install -X
+              cd -
+            fi
+          done
+
+      - name: Debug Generated Files and Deployment Status
+        run: |
+          echo "=== Current directory structure ==="
           find . -type f -not -path "*/\.*" | sort
+          
           echo ""
-          echo "Content of target directory:"
-          ls -la target/ || echo "Target directory not found"
+          echo "=== Generated API Proxy Bundles ==="
+          find target/apiproxies -type f | sort
+          
           echo ""
-          echo "Shared flows directory:"
-          ls -la target/sharedflows/ || echo "Shared flows directory not found"
-          echo ""
-          echo "API Proxies directory:"
-          ls -la target/apiproxies/ || echo "API Proxies directory not found"
+          echo "=== Generated Shared Flow Bundles ==="
+          find target/sharedflows -type f | sort
