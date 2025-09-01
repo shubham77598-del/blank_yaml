@@ -55,6 +55,7 @@ public class ProxyGenerator {
 
     private String renderPolicy(String name, String type, Map<String,Object> cfg) {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        
         if ("Quota".equals(type)) {
             String limit = val(cfg.get("limit")); if (limit == null) limit = "1000";
             String timeUnit = val(cfg.get("timeUnit")); if (timeUnit == null) timeUnit = "minute";
@@ -64,10 +65,27 @@ public class ProxyGenerator {
               .append("  <Interval>1</Interval>\n")
               .append("  <TimeUnit>").append(timeUnit).append("</TimeUnit>\n")
               .append("</Quota>\n");
-        } else {
-            sb.append("<Policy name=\"").append(name).append("\">\n")
+        } else if ("VerifyAPIKey".equals(type)) {
+            String keyLocation = val(cfg.get("keyLocation")); 
+            if (keyLocation == null) keyLocation = "request.header.x-api-key";
+            sb.append("<VerifyAPIKey name=\"").append(name).append("\">\n")
               .append("  <DisplayName>").append(name).append("</DisplayName>\n")
-              .append("</Policy>\n");
+              .append("  <APIKey ref=\"").append(keyLocation).append("\"/>\n")
+              .append("</VerifyAPIKey>\n");
+        } else if ("MessageLogging".equals(type)) {
+            String logLevel = val(cfg.get("logLevel")); 
+            if (logLevel == null) logLevel = "INFO";
+            sb.append("<MessageLogging name=\"").append(name).append("\">\n")
+              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+              .append("  <Syslog>\n")
+              .append("    <Message>{client.ip} {request.verb} {request.uri}</Message>\n")
+              .append("  </Syslog>\n")
+              .append("</MessageLogging>\n");
+        } else {
+            // Generic policy template for unknown types
+            sb.append("<").append(type).append(" name=\"").append(name).append("\">\n")
+              .append("  <DisplayName>").append(name).append("</DisplayName>\n")
+              .append("</").append(type).append(">\n");
         }
         return sb.toString();
     }
@@ -123,13 +141,21 @@ public class ProxyGenerator {
         if (desc != null && !desc.trim().isEmpty())
             sb.append("  <Description>").append(desc).append("</Description>\n");
 
+        // Handle both "dependsOn" and "dependencies" fields
         Map<String,Object> depends = mapOf(cfg.get("dependsOn"));
+        if (depends.isEmpty()) {
+            depends = mapOf(cfg.get("dependencies"));
+        }
+        
         Object sfs = depends.get("sharedFlows");
         if (sfs instanceof List) {
             for (Object sf : (List)sfs) {
-                if (sf != null) sb.append("  <DependsOn>sf:").append(sf).append("</DependsOn>\n");
+                if (sf != null) {
+                    sb.append("  <SharedFlows>").append(sf).append("</SharedFlows>\n");
+                }
             }
         }
+        
         sb.append("  <ProxyEndpoints><ProxyEndpoint>default</ProxyEndpoint></ProxyEndpoints>\n")
           .append("  <TargetEndpoints><TargetEndpoint>default</TargetEndpoint></TargetEndpoints>\n")
           .append("</APIProxy>\n");

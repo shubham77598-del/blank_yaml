@@ -127,7 +127,8 @@ discover_and_test_apis() {
                 local proxy_file="${proxy_dir}apiproxy/proxies/default.xml"
                 
                 if [[ -f "$proxy_file" ]]; then
-                    base_path=$(grep -o '<BasePath>[^<]*</BasePath>' "$proxy_file" 2>/dev/null | sed 's/<BasePath>//g; s/<\/BasePath>//g' | head -1)
+                    # Improved base path extraction with better error handling
+                    base_path=$(grep -o '<BasePath>[^<]*</BasePath>' "$proxy_file" 2>/dev/null | sed 's/<BasePath>//g; s/<\/BasePath>//g' | head -1 | tr -d '\n\r' | xargs)
                 fi
                 
                 if [[ -n "$base_path" ]]; then
@@ -139,9 +140,16 @@ discover_and_test_apis() {
                     fi
                 else
                     log_warn "Could not determine base path for proxy: ${proxy_name}"
+                    # Try to read the file content for debugging
+                    if [[ -f "$proxy_file" ]]; then
+                        log_warn "Proxy file content preview:"
+                        head -10 "$proxy_file" | sed 's/^/    /'
+                    fi
                 fi
             fi
         done
+    else
+        log_warn "No generated/proxies directory found"
     fi
     
     # Summary
@@ -149,11 +157,18 @@ discover_and_test_apis() {
     log_info "API Testing Summary:"
     log_info "Total tests: ${total_tests}"
     log_info "Failures: ${test_failures}"
-    log_info "Success rate: $(( (total_tests - test_failures) * 100 / (total_tests == 0 ? 1 : total_tests) ))%"
+    if [[ $total_tests -gt 0 ]]; then
+        log_info "Success rate: $(( (total_tests - test_failures) * 100 / total_tests ))%"
+    else
+        log_warn "No APIs found to test"
+    fi
     log_info "=================================="
     
     if [[ $test_failures -gt 0 ]]; then
         log_error "Some APIs failed verification!"
+        return 1
+    elif [[ $total_tests -eq 0 ]]; then
+        log_warn "No APIs were found to test - this may indicate a generation or deployment issue"
         return 1
     else
         log_info "All APIs are responding correctly! 🎉"
@@ -168,15 +183,53 @@ main() {
     log_info "Apigee Env: ${APIGEE_ENV}"
     log_info "Apigee Host: ${APIGEE_HOST}"
     
-    # Validate required environment variables
-    if [[ -z "$APIGEE_ORG" ]]; then
-        log_error "APIGEE_ORG environment variable is required"
+    # Validate required environment variables (only in CI, not for local testing)
+    if [[ -z "$APIGEE_ORG" ]] && [[ "${CI:-false}" == "true" ]]; then
+        log_error "APIGEE_ORG environment variable is required in CI environment"
         exit 1
     fi
     
-    if [[ -z "$APIGEE_ENV" ]]; then
-        log_error "APIGEE_ENV environment variable is required"
+    if [[ -z "$APIGEE_ENV" ]] && [[ "${CI:-false}" == "true" ]]; then
+        log_error "APIGEE_ENV environment variable is required in CI environment"
         exit 1
+    fi
+    
+    # For local testing without proper env vars, just validate structure
+    if [[ -z "$APIGEE_ORG" || -z "$APIGEE_ENV" ]]; then
+        log_warn "APIGEE_ORG or APIGEE_ENV not set - running in structure validation mode"
+        log_info "Validating generated API structure only..."
+        
+        # Just validate the generated structure without making HTTP calls
+        local total_apis=0
+        if [[ -d "generated/proxies" ]]; then
+            for proxy_dir in generated/proxies/*/; do
+                if [[ -d "$proxy_dir" ]]; then
+                    proxy_name=$(basename "$proxy_dir")
+                    log_info "Found proxy: ${proxy_name}"
+                    
+                    local proxy_file="${proxy_dir}apiproxy/proxies/default.xml"
+                    if [[ -f "$proxy_file" ]]; then
+                        base_path=$(grep -o '<BasePath>[^<]*</BasePath>' "$proxy_file" 2>/dev/null | sed 's/<BasePath>//g; s/<\/BasePath>//g' | head -1 | tr -d '\n\r' | xargs)
+                        if [[ -n "$base_path" ]]; then
+                            log_info "✅ Proxy ${proxy_name} has valid base path: ${base_path}"
+                            total_apis=$((total_apis + 1))
+                        else
+                            log_warn "⚠️  Proxy ${proxy_name} is missing base path"
+                        fi
+                    else
+                        log_warn "⚠️  Proxy ${proxy_name} is missing proxy endpoint file"
+                    fi
+                fi
+            done
+        fi
+        
+        if [[ $total_apis -gt 0 ]]; then
+            log_info "✅ Structure validation passed - found ${total_apis} valid API proxy(ies)"
+            exit 0
+        else
+            log_error "❌ No valid APIs found in generated structure"
+            exit 1
+        fi
     fi
     
     # Wait a bit for deployments to stabilize
