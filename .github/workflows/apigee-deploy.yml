@@ -38,21 +38,25 @@ jobs:
           
           if [ -n "${{ secrets.APIGEE_ORG }}" ]; then
             echo "APIGEE_ORG=${{ secrets.APIGEE_ORG }}" >> $GITHUB_ENV
+            export APIGEE_ORG="${{ secrets.APIGEE_ORG }}"
           elif [ -n "${{ secrets.apigee }}" ]; then
             # Try to extract APIGEE_ORG from JSON
             APIGEE_ORG=$(echo '${{ secrets.apigee }}' | jq -r '.APIGEE_ORG // empty' 2>/dev/null || true)
             if [ -n "$APIGEE_ORG" ]; then
               echo "APIGEE_ORG=$APIGEE_ORG" >> $GITHUB_ENV
+              export APIGEE_ORG
             fi
           fi
           
           if [ -n "${{ secrets.APIGEE_ENV }}" ]; then
             echo "APIGEE_ENV=${{ secrets.APIGEE_ENV }}" >> $GITHUB_ENV
+            export APIGEE_ENV="${{ secrets.APIGEE_ENV }}"
           elif [ -n "${{ secrets.apigee }}" ]; then
             # Try to extract APIGEE_ENV from JSON
             APIGEE_ENV=$(echo '${{ secrets.apigee }}' | jq -r '.APIGEE_ENV // empty' 2>/dev/null || true)
             if [ -n "$APIGEE_ENV" ]; then
               echo "APIGEE_ENV=$APIGEE_ENV" >> $GITHUB_ENV
+              export APIGEE_ENV
             fi
           fi
           
