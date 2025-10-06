@@ -80,7 +80,7 @@ public class ConfigGenerator {
           "      <plugin>\n" +
           "        <groupId>com.apigee.edge.config</groupId>\n" +
           "        <artifactId>apigee-config-maven-plugin</artifactId>\n" +
-          "        <version>2.3.0</version>\n" +
+          "        <version>2.9.3</version>\n" +
           "        <executions>\n" +
           "          <execution>\n" +
           "            <id>apiproducts</id>\n" +

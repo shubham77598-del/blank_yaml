@@ -148,33 +148,24 @@ public class SharedFlowGenerator {
             "        </executions>\n" +
             "      </plugin>\n" +
             "      <plugin>\n" +
-            "        <groupId>com.google.cloud.apigee</groupId>\n" +
-            "        <artifactId>apigee-maven-plugin</artifactId>\n" +
-            "        <version>1.0.0</version>\n" +
+            "        <groupId>io.apigee.build-tools.enterprise4g</groupId>\n" +
+            "        <artifactId>apigee-edge-maven-plugin</artifactId>\n" +
+            "        <version>2.5.2</version>\n" +
             "        <executions>\n" +
-            "          <execution>\n" +
-            "            <id>import-sharedflow</id>\n" +
-            "            <phase>verify</phase>\n" +
-            "            <goals><goal>import-shared-flow</goal></goals>\n" +
-            "            <configuration>\n" +
-            "              <file>${project.build.directory}/${project.artifactId}-${project.version}.zip</file>\n" +
-            "              <name>"+name+"</name>\n" +
-            "              <override>true</override>\n" +
-            "            </configuration>\n" +
-            "          </execution>\n" +
             "          <execution>\n" +
             "            <id>deploy-sharedflow</id>\n" +
             "            <phase>install</phase>\n" +
-            "            <goals><goal>deploy-shared-flow</goal></goals>\n" +
+            "            <goals><goal>deploy</goal></goals>\n" +
             "            <configuration>\n" +
-            "              <name>"+name+"</name>\n" +
-            "              <environment>${apigee.env}</environment>\n" +
+            "              <file>${project.build.directory}/${project.artifactId}-${project.version}.zip</file>\n" +
             "              <override>true</override>\n" +
             "            </configuration>\n" +
             "          </execution>\n" +
             "        </executions>\n" +
             "        <configuration>\n" +
-            "          <organization>${apigee.org}</organization>\n" +
+            "          <org>${apigee.org}</org>\n" +
+            "          <env>${apigee.env}</env>\n" +
+            "          <options>override</options>\n" +
             "          <serviceAccountFile>${serviceAccountFile}</serviceAccountFile>\n" +
             "        </configuration>\n" +
             "      </plugin>\n" +
